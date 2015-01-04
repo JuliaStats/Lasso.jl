@@ -340,6 +340,14 @@ function fit!{T}(coef::Vector{T}, cd::CoordinateDescent{T}, λ)
 end
 
 intercept{T}(coef::Vector{T}, cd::CoordinateDescent{T}) = cd.intercept ? cd.μy .- dot(cd.μX, coef) : zero(T)
+function intercept{T}(coef::Vector{T}, cd::CoordinateDescent{T}, Xnorm::Vector{T})
+    cd.intercept || return zero(T)
+    v = cd.μy
+    for i = 1:length(coef)
+        v -= cd.μX[i] * coef[i] * Xnorm[i]
+    end
+    v
+end
 function linpred!{T}(mu::Vector{T}, X::Matrix{T}, coef::Vector{T}, b0::T)
     A_mul_B!(mu, X, coef)
     if b0 != 0
@@ -355,13 +363,16 @@ end
 type LassoPath{S<:GlmMod,T} <: RegressionModel
     m::S
     nulldev::T              # null deviance
+    nullb0::T               # intercept of null model, if one was fit
     λ::Vector{T}            # shrinkage parameters
     autoλ::Bool             # whether λ is automatically determined
     Xnorm::Vector{T}        # original norms of columns of X before standardization
     pct_dev::Vector{T}      # percent deviance explained by each model
     coefs::Matrix{T}        # model coefficients
+    b0::Vector{T}           # model intercepts
 
-    LassoPath(m::GlmMod, nulldev::T, λ::Vector{T}, autoλ::Bool, Xnorm::Vector{T}) = new(m, nulldev, λ, autoλ, Xnorm)
+    LassoPath(m::GlmMod, nulldev::T, nullb0::T, λ::Vector{T}, autoλ::Bool, Xnorm::Vector{T}) =
+        new(m, nulldev, nullb0, λ, autoλ, Xnorm)
 end
 
 function Base.show(io::IO, path::LassoPath)
@@ -381,6 +392,7 @@ function StatsBase.fit{S,T}(path::LassoPath{S,T}; verbose::Bool=false, irls_maxi
     nulldev = path.nulldev
     λ = path.λ
     autoλ = path.autoλ
+    Xnorm = path.Xnorm
     nλ = length(λ)
     m = path.m
     r = m.rr
@@ -391,6 +403,7 @@ function StatsBase.fit{S,T}(path::LassoPath{S,T}; verbose::Bool=false, irls_maxi
     X = cd.X
     α = cd.α
     coefs = Array(T, size(X, 2), nλ)
+    b0s = zeros(T, nλ)
     oldcoef = Array(T, size(X, 2))
     newcoef = zeros(T, size(X, 2))
     coefdiff = Array(T, size(X, 2))
@@ -468,6 +481,7 @@ function StatsBase.fit{S,T}(path::LassoPath{S,T}; verbose::Bool=false, irls_maxi
 
         pct_dev[i] = 1 - dev_ratio
         coefs[:, i] = newcoef
+        b0s[i] = intercept(newcoef, cd, Xnorm)
 
         if i == nλ || (autoλ && last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
                        pct_dev[i] > MAX_DEV_FRAC)
@@ -480,8 +494,10 @@ function StatsBase.fit{S,T}(path::LassoPath{S,T}; verbose::Bool=false, irls_maxi
     path.λ = path.λ[1:i]
     path.pct_dev = pct_dev[1:i]
     path.coefs = coefs[:, 1:i]
-    if !isempty(path.Xnorm)
-        scale!(path.Xnorm, path.coefs)
+    path.b0 = b0s[1:i]
+    autoλ && (path.b0[1] = path.nullb0)
+    if !isempty(Xnorm)
+        scale!(Xnorm, path.coefs)
     end
 end
 
@@ -523,8 +539,8 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
     if !isempty(off)
         subtract!(eta, off)
     end
-    # rr = GlmResp{typeof(y)}(y, d, l, eta, mu, offset, wts)
-    rr = GlmResp{typeof(y),typeof(d),typeof(l)}(y, d, l, eta, mu, offset, wts)
+    rr = GlmResp{typeof(y)}(y, d, l, eta, mu, offset, wts)
+    # rr = GlmResp{typeof(y),typeof(d),typeof(l)}(y, d, l, eta, mu, offset, wts)
 
     # Fit to find null deviance
     # This is stupid
@@ -541,17 +557,17 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
         end
         logλmax = log(λmax)
         λ = exp(linspace(logλmax, logλmax + log(λminratio), nλ))
+        nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
     else
         λ = convert(Vector{T}, λ)
+        nullb0 = zero(T)
     end
 
     # Fit path
     args = (X, intercept, α, typemax(Int), 1e-7)
     model = GlmMod(rr, naivealgorithm ? NaiveCoordinateDescent{T}(args...) : CovarianceCoordinateDescent{T}(args...), false)
-    path = LassoPath{typeof(model),T}(model, deviance(nullmodel), λ, autoλ, Xnorm)
-    if dofit
-        fit(path; fitargs...)
-    end
+    path = LassoPath{typeof(model),T}(model, deviance(nullmodel), nullb0, λ, autoλ, Xnorm)
+    dofit && fit(path; fitargs...)
     path
 end
 
