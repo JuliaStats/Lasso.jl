@@ -617,8 +617,8 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
             subtract!(eta, off)
         end
 
-        rr = GlmResp{typeof(y)}(y, d, l, eta, mu, offset, wts)
-        # rr = GlmResp{typeof(y),typeof(d),typeof(l)}(y, d, l, eta, mu, offset, wts)
+        # rr = GlmResp{typeof(y)}(y, d, l, eta, mu, offset, wts)
+        rr = GlmResp{typeof(y),typeof(d),typeof(l)}(y, d, l, eta, mu, offset, wts)
         model = GeneralizedLinearModel(rr, cd, false)
     end
 
