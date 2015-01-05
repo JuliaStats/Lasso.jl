@@ -296,14 +296,6 @@ function fit!{T}(coef::Vector{T}, cd::CoordinateDescent{T}, λ)
 end
 
 intercept{T}(coef::Vector{T}, cd::CoordinateDescent{T}) = cd.intercept ? cd.μy .- dot(cd.μX, coef) : zero(T)
-function intercept{T}(coef::Vector{T}, cd::CoordinateDescent{T}, Xnorm::Vector{T})
-    cd.intercept || return zero(T)
-    v = cd.μy
-    for i = 1:length(coef)
-        v -= cd.μX[i] * coef[i] * Xnorm[i]
-    end
-    v
-end
 
 function linpred!{T}(mu::Vector{T}, X::Matrix{T}, coef::Vector{T}, b0::T)
     A_mul_B!(mu, X, coef)
@@ -371,7 +363,7 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
     pct_dev = zeros(nλ)
     dev_ratio = convert(T, NaN)
     dev = convert(T, NaN)
-    b0 = oldb0 = zero(T)
+    b0 = zero(T)
     scratch = Array(T, size(X))
     scratchmu = Array(T, size(X, 1))
     eta = r.eta
@@ -440,7 +432,7 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
 
         pct_dev[i] = 1 - dev_ratio
         coefs[:, i] = newcoef
-        b0s[i] = intercept(newcoef, cd#=, Xnorm=#)
+        b0s[i] = b0
 
         # Test whether we should continue
         if i == nλ || (autoλ && last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
@@ -506,7 +498,7 @@ function StatsBase.fit{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=fal
         dev_ratio = cd.dev/nulldev
         pct_dev[i] = 1 - dev_ratio
         coefs[:, i] = newcoef
-        b0s[i] = intercept(newcoef, cd#=, Xnorm=#)
+        b0s[i] = intercept(newcoef, cd)
 
         # Test whether we should continue
         if i == nλ || (autoλ && last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
@@ -623,8 +615,8 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
             subtract!(eta, off)
         end
 
-         rr = GlmResp{typeof(y)}(y, d, l, eta, mu, offset, wts)
-        #rr = GlmResp{typeof(y),typeof(d),typeof(l)}(y, d, l, eta, mu, offset, wts)
+        rr = GlmResp{typeof(y)}(y, d, l, eta, mu, offset, wts)
+        # rr = GlmResp{typeof(y),typeof(d),typeof(l)}(y, d, l, eta, mu, offset, wts)
         model = GeneralizedLinearModel(rr, cd, false)
     end
 
