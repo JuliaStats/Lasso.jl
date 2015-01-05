@@ -39,40 +39,9 @@ type NaiveCoordinateDescent{T} <: CoordinateDescent{T}
             intercept, α, maxiter, tol, convert(T, NaN))
 end
 
-# In the absence of weights, the residuals are always up to date,
-# except at first fit, when beta is always 0
-function update!{T}(cd::NaiveCoordinateDescent{T}, y::Vector{T})
-    isnan(cd.dev) || return cd
-    residuals = copy!(cd.residuals, y)
-    if cd.intercept
-        # Compute Xmean
-        μX = cd.μX
-        for i = 1:size(X, 2)
-            μ = zero(T)
-            for i = 1:size(X, 1)
-                μ += X[i, j]
-            end
-            μX[i] = μ/size(X, 1)
-        end
-
-        # Compute μy
-        μy = zero(T)
-        for i = 1:length(y)
-            μy += y[i]
-        end
-        μy /= size(X, 1)
-
-        # Subtract μy from residuals
-        for i = 1:length(residuals)
-            residuals[i] -= μy
-        end
-    end
-    cd.abstol = dot(residuals, residuals) * cd.tol
-end
-
 # Updates CoordinateDescent object with (possibly) new y vector and
 # weights
-function update!{T}(cd::NaiveCoordinateDescent{T}, coef::Vector{T}, y::Vector{T}, wt::Vector{T}, scratch::Matrix{T})
+function update!{T}(cd::NaiveCoordinateDescent{T}, coef::Vector{T}, y::Vector{T}, wt::Vector{T}, scratch::Any)
     residuals = cd.residuals
     X = cd.X
     weights = copy!(cd.weights, wt)
@@ -192,7 +161,6 @@ type CovarianceCoordinateDescent{T} <: CoordinateDescent{T}
     XtX::Matrix{T}                # X'X (scaled by weights)
     scratch::Vector{T}            # scratch for residual calculation
     dev::T                        # last deviance
-    beta::Vector{T}               # base coefficient vector
     intercept::Bool               # whether an intercept should be fitted
     α::T                          # elastic net parameter
     maxiter::Int                  # maximum number of iterations
@@ -202,18 +170,7 @@ type CovarianceCoordinateDescent{T} <: CoordinateDescent{T}
     CovarianceCoordinateDescent{T}(X::Matrix{T}, intercept::Bool, α::T, maxiter::Int, tol::T) =
         new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), similar(X, size(X, 2)),
             similar(X, size(X, 2), size(X, 2)), similar(X, size(X, 2)), convert(T, NaN),
-            zeros(T, size(X, 2)), intercept, α, maxiter, tol, convert(T, NaN))
-end
-
-# In the absence of weights, the residuals are always up to date,
-# except at first fit
-function update!{T}(cd::CovarianceCoordinateDescent{T}, y::Vector{T})
-    isnan(cd.yty) || return cd
-    cd.yty = dot(y, y)
-    cd.abstol = cd.yty * cd.tol
-    Ac_mul_B!(cd.Xty, cd.X, cd.y)
-    Ac_mul_B!(cd.XtX, cd.X, cd.y)
-    cd
+            intercept, α, maxiter, tol, convert(T, NaN))
 end
 
 # Updates CoordinateDescent object with (possibly) new y vector and
@@ -360,7 +317,7 @@ end
 
 ## LASSO PATH
 
-type LassoPath{S<:GlmMod,T} <: RegressionModel
+type LassoPath{S<:Union(LinearModel, GeneralizedLinearModel),T} <: RegressionModel
     m::S
     nulldev::T              # null deviance
     nullb0::T               # intercept of null model, if one was fit
@@ -371,21 +328,25 @@ type LassoPath{S<:GlmMod,T} <: RegressionModel
     coefs::Matrix{T}        # model coefficients
     b0::Vector{T}           # model intercepts
 
-    LassoPath(m::GlmMod, nulldev::T, nullb0::T, λ::Vector{T}, autoλ::Bool, Xnorm::Vector{T}) =
+    LassoPath(m, nulldev::T, nullb0::T, λ::Vector{T}, autoλ::Bool, Xnorm::Vector{T}) =
         new(m, nulldev, nullb0, λ, autoλ, Xnorm)
 end
 
 function Base.show(io::IO, path::LassoPath)
-    println(io, "$(typeof(path.m.rr.d).name) Lasso Solution Path ($(size(path.coefs, 2)) solutions for $(size(path.coefs, 1)) predictors):")
+    prefix = isa(path.m, GeneralizedLinearModel) ? typeof(path.m.rr.d).name.name*" " : "" 
+    println(io, prefix*"Lasso Solution Path ($(size(path.coefs, 2)) solutions for $(size(path.coefs, 1)) predictors):")
     Base.showarray(io, [path.λ path.pct_dev sum(path.coefs .!= 0, 1)']; header=false)
 end
+
+## FITTING (INCLUDING IRLS)
 
 const MIN_DEV_FRAC_DIFF = 1e-5
 const MAX_DEV_FRAC = 0.999
 
-function StatsBase.fit{S,T}(path::LassoPath{S,T}; verbose::Bool=false, irls_maxiter::Int=30,
-                            cd_maxiter::Int=10000, cd_tol::Real=1e-7, irls_tol::Real=1e-7,
-                            minStepFac::Real=eps())
+# Fits GLMs (outer and middle loops)
+function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbose::Bool=false, irls_maxiter::Int=30,
+                                                    cd_maxiter::Int=10000, cd_tol::Real=1e-7, irls_tol::Real=1e-7,
+                                                    minStepFac::Real=eps())
     irls_maxiter >= 1 || error("irls_maxiter must be positive")
     0 < minStepFac < 1 || error("minStepFac must be in (0, 1)")
 
@@ -419,18 +380,16 @@ function StatsBase.fit{S,T}(path::LassoPath{S,T}; verbose::Bool=false, irls_maxi
     if autoλ
         # No need to fit the first model
         coefs[:, 1] = zero(T)
+        b0s[1] = path.nullb0
         i = 2
     else
         i = 1
     end
 
-    # Compute working residuals at current position
     dev = NaN
     while true # outer loop
         objold = Inf
         last_dev_ratio = dev_ratio
-
-        # Switch λ
         curλ = λ[i]
 
         cvg = false
@@ -483,6 +442,7 @@ function StatsBase.fit{S,T}(path::LassoPath{S,T}; verbose::Bool=false, irls_maxi
         coefs[:, i] = newcoef
         b0s[i] = intercept(newcoef, cd, Xnorm)
 
+        # Test whether we should continue
         if i == nλ || (autoλ && last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
                        pct_dev[i] > MAX_DEV_FRAC)
             break
@@ -495,26 +455,102 @@ function StatsBase.fit{S,T}(path::LassoPath{S,T}; verbose::Bool=false, irls_maxi
     path.pct_dev = pct_dev[1:i]
     path.coefs = coefs[:, 1:i]
     path.b0 = b0s[1:i]
-    autoλ && (path.b0[1] = path.nullb0)
     if !isempty(Xnorm)
         scale!(Xnorm, path.coefs)
     end
 end
 
+# Fits linear models (just an outer loop)
+function StatsBase.fit{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=false, irls_maxiter::Int=30,
+                                         cd_maxiter::Int=10000, cd_tol::Real=1e-7, irls_tol::Real=1e-7,
+                                         minStepFac::Real=eps())
+    irls_maxiter >= 1 || error("irls_maxiter must be positive")
+    0 < minStepFac < 1 || error("minStepFac must be in (0, 1)")
+
+    nulldev = path.nulldev
+    λ = path.λ
+    autoλ = path.autoλ
+    Xnorm = path.Xnorm
+    nλ = length(λ)
+    m = path.m
+    r = m.rr
+    cd = m.pp
+    cd.maxiter = cd_maxiter
+    cd.tol = cd_tol
+
+    X = cd.X
+    coefs = Array(T, size(X, 2), nλ)
+    b0s = zeros(T, nλ)
+    newcoef = zeros(T, size(X, 2))
+    pct_dev = zeros(nλ)
+    dev_ratio = convert(T, NaN)
+
+    update!(cd, newcoef, r.y, r.wts, Array(T, size(X)))
+
+    if autoλ
+        # No need to fit the first model
+        coefs[:, 1] = zero(T)
+        b0s[1] = path.nullb0
+        i = 2
+    else
+        i = 1
+    end
+
+    while true # outer loop
+        last_dev_ratio = dev_ratio
+        curλ = λ[i]
+
+        # Run coordinate descent
+        fit!(newcoef, cd, curλ)
+
+        dev_ratio = cd.dev/nulldev
+        pct_dev[i] = 1 - dev_ratio
+        coefs[:, i] = newcoef
+        b0s[i] = intercept(newcoef, cd, Xnorm)
+
+        # Test whether we should continue
+        if i == nλ || (autoλ && last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
+                       pct_dev[i] > MAX_DEV_FRAC)
+            break
+        end
+
+        i += 1
+    end
+
+    path.λ = path.λ[1:i]
+    path.pct_dev = pct_dev[1:i]
+    path.coefs = coefs[:, 1:i]
+    path.b0 = b0s[1:i]
+    if !isempty(Xnorm)
+        scale!(Xnorm, path.coefs)
+    end
+end
+
+## MODEL CONSTRUCTION
+
+function computeλ(Xy, λminratio, nλ)
+    λmax = abs(Xy[1])
+    for i = 1:length(Xy)
+        x = abs(Xy[i])
+        λmax = ifelse(x > λmax, x, λmax)
+    end
+    logλmax = log(λmax)
+    λ = exp(linspace(logλmax, logλmax + log(λminratio), nλ))
+end
+
 function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
                                                      X::Matrix{T}, y::V, d::UnivariateDistribution,
                                                      l::Link=canonicallink(d);
-                                                     wts::V=fill!(similar(y), one(eltype(X))/length(y)),
+                                                     wts::Union(FPVector, Nothing)=ones(T, length(y)),
                                                      offset::V=similar(y, 0),
                                                      α::Number=one(eltype(y)), nλ::Int=100,
                                                      λminratio::Number=ifelse(size(X, 1) < size(X, 2), 0.01, 1e-4),
                                                      λ::Union(Vector,Nothing)=nothing, standardize::Bool=true,
                                                      intercept::Bool=true, naivealgorithm::Bool=true, dofit::Bool=true,
-                                                     fitargs...)
+                                                     irls_tol::Real=1e-7, fitargs...)
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
     n = length(y)
     length(wts) == n || error("length(wts) = $(length(wts)) should be 0 or $n")
-    scale!(wts, 1/sum(wts))
 
     # Standardize predictors if requested
     if standardize
@@ -522,7 +558,7 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
         for i = 1:length(Xnorm)
             @inbounds Xnorm[i] = 1/Xnorm[i]
         end
-        X = scale!(copy(X), Xnorm)
+        X = scale(X, Xnorm)
     else
         Xnorm = T[]
     end
@@ -530,45 +566,73 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
     # Lasso initialization
     α = convert(T, α)
     λminratio = convert(T, λminratio)
+    cd = naivealgorithm ? NaiveCoordinateDescent{T}(X, intercept, α, typemax(Int), 1e-7) :
+                          CovarianceCoordinateDescent{T}(X, intercept, α, typemax(Int), 1e-7)
 
     # GLM response initialization
-    wts = T <: Float64 ? copy(wts) : convert(typeof(y), wts)
-    off = T <: Float64 ? copy(offset) : convert(Vector{T}, offset)
-    mu = mustart(d, y, wts)
-    eta = linkfun!(l, similar(mu), mu)
-    if !isempty(off)
-        subtract!(eta, off)
-    end
-    rr = GlmResp{typeof(y)}(y, d, l, eta, mu, offset, wts)
-    # rr = GlmResp{typeof(y),typeof(d),typeof(l)}(y, d, l, eta, mu, offset, wts)
-
-    # Fit to find null deviance
-    # This is stupid
-    nullmodel = fit(GlmMod, ones(T, size(X, 1), ifelse(intercept, 1, 0)), y, d, l; wts=wts, offset=offset, convTol=1e-7)
-
     autoλ = λ == nothing
-    if autoλ
-        # Find max λ
-        Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwts)
-        λmax = abs(Xy[1])
-        for i = 1:length(Xy)
-            x = abs(Xy[i])
-            λmax = ifelse(x > λmax, x, λmax)
+    wts = eltype(wts) == T ? scale(wts, 1/sum(wts)) : scale!(convert(typeof(y), wts), 1/n)
+    off = eltype(offset) == T ? copy(offset) : convert(Vector{T}, offset)
+
+    if isa(d, Normal) && isa(l, IdentityLink)
+        # Special no-IRLS case
+
+        nullb0 = intercept ? mean(y, weights(wts)) : zero(T)
+        nulldev = 0.0
+        @simd for i = 1:length(y)
+            @inbounds nulldev += abs2(y[i] - nullb0)*wts[i]
         end
-        logλmax = log(λmax)
-        λ = exp(linspace(logλmax, logλmax + log(λminratio), nλ))
-        nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
+
+        if autoλ
+            # Find max λ
+            if intercept
+                yscratch = Array(T, length(y))
+                @simd for i = 1:length(y)
+                    @inbounds yscratch[i] = (y[i] - nullb0)*wts[i]
+                end
+            else
+                yscratch = y.*wts
+            end
+            Xy = X'yscratch
+            λ = computeλ(Xy, λminratio, nλ)
+        else
+            λ = convert(Vector{T}, λ)
+        end
+
+        # yscratch is just a placeholder here
+        model = LinearModel(LmResp{typeof(y)}(yscratch, off, wts, y), cd)
     else
-        λ = convert(Vector{T}, λ)
-        nullb0 = zero(T)
+        # Fit to find null deviance
+        # Maybe we should use this GlmResp object?
+        nullmodel = fit(GeneralizedLinearModel, ones(T, n, ifelse(intercept, 1, 0)), y, d, l; wts=wts, offset=offset, convTol=irls_tol)
+        nulldev = deviance(nullmodel)
+
+        if autoλ
+            # Find max λ
+            Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwts)
+            λ = computeλ(Xy, λminratio, nλ)
+            nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
+        else
+            λ = convert(Vector{T}, λ)
+            nullb0 = zero(T)
+        end
+
+        mu = mustart(d, y, wts)
+        eta = linkfun!(l, similar(mu), mu)
+        if !isempty(off)
+            subtract!(eta, off)
+        end
+
+        # rr = GlmResp{typeof(y)}(y, d, l, eta, mu, offset, wts)
+        rr = GlmResp{typeof(y),typeof(d),typeof(l)}(y, d, l, eta, mu, offset, wts)
+        model = GeneralizedLinearModel(rr, cd, false)
     end
 
     # Fit path
-    args = (X, intercept, α, typemax(Int), 1e-7)
-    model = GlmMod(rr, naivealgorithm ? NaiveCoordinateDescent{T}(args...) : CovarianceCoordinateDescent{T}(args...), false)
-    path = LassoPath{typeof(model),T}(model, deviance(nullmodel), nullb0, λ, autoλ, Xnorm)
-    dofit && fit(path; fitargs...)
+    path = LassoPath{typeof(model),T}(model, nulldev, nullb0, λ, autoλ, Xnorm)
+    dofit && fit(path; irls_tol=irls_tol, fitargs...)
     path
 end
+
 
 end
