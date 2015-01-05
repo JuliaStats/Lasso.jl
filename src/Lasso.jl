@@ -1,7 +1,7 @@
 module Lasso
 import Base.LinAlg.BlasReal
 
-using Reexport, StatsBase, Base.Test
+using Reexport, StatsBase
 @reexport using GLM, Distributions
 using GLM.FPVector, GLM.wrkwt!
 export LassoPath, fit
