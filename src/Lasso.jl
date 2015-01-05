@@ -533,7 +533,7 @@ function computeλ(Xy, λminratio, nλ)
 end
 
 function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
-                                                     X::Matrix{T}, y::V, d::UnivariateDistribution,
+                                                     X::Matrix{T}, y::V, d::UnivariateDistribution=Normal(),
                                                      l::Link=canonicallink(d);
                                                      wts::Union(FPVector, Nothing)=ones(T, length(y)),
                                                      offset::V=similar(y, 0),
