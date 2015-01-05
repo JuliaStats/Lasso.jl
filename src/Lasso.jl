@@ -33,9 +33,9 @@ type NaiveCoordinateDescent{T} <: CoordinateDescent{T}
     abstol::T                     # tolerance in units of deviance
 
     NaiveCoordinateDescent{T}(X::Matrix{T}, intercept::Bool, α::T, maxiter::Int, tol::T)  =
-        new(X, zero(T), zeros(T, size(X, 2)), ones(T, size(X, 1)), fill(convert(T, NaN),
-            size(X, 1)), fill(convert(T, 1/size(X, 1)), size(X, 1)), convert(T, NaN),
-            intercept, α, maxiter, tol, convert(T, NaN))
+        new(X, zero(T), zeros(T, size(X, 2)), ones(T, size(X, 2)),
+            fill(convert(T, NaN), size(X, 1)), fill(convert(T, NaN), size(X, 1)),
+            convert(T, NaN), intercept, α, maxiter, tol, convert(T, NaN))
 end
 
 # Updates CoordinateDescent object with (possibly) new y vector and
@@ -52,19 +52,22 @@ function update!{T}(cd::NaiveCoordinateDescent{T}, coef::Vector{T}, y::Vector{T}
         @inbounds residuals[i] = y[i] - residuals[i]
     end
 
-    # Update Xmean
     if cd.intercept
         μX = cd.μX
         Xssq = cd.Xssq
         @inbounds for j = 1:size(X, 2)
+            # Update μX
             μ = zero(T)
-            ws = zero(T)
             @simd for i = 1:size(X, 1)
-                x = X[i, j]*weights[i]
-                μ += x
-                ws += X[i, j]*x
+                μ += X[i, j]*weights[i]
             end
             μX[j] = μ*weightsuminv
+
+            # Update Xssq
+            ws = zero(T)
+            @simd for i = 1:size(X, 1)
+                ws += abs2(X[i, j] - μ)*weights[i]
+            end
             Xssq[j] = ws
         end
 
@@ -249,7 +252,6 @@ function cycle!{T}(coef::Vector{T}, cd::CovarianceCoordinateDescent{T}, λ::T, �
         # Use all variables for first and last iterations
         if all || coef[j] != 0
             s = (Xty[j] - BLAS.dot(size(XtX, 1), pointer(XtX, offset), 1, coef, 1)) + XtX[j, j]*coef[j]
-            # println(repr(coef))
             coef[j] = S(s, λ*α)/(XtX[j, j] + λ*(1 - α))
             # println("s $j => $s, den = $((XtX[j, j] + λ*(1 - α)))")
             # println("$j => $(coef[j])")
