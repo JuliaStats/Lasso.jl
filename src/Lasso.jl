@@ -1,10 +1,10 @@
 module Lasso
-export LassoPath
 import Base.LinAlg.BlasReal
 
 using Reexport, StatsBase, Base.Test
 @reexport using GLM, Distributions
 using GLM.FPVector, GLM.wrkwt!
+export LassoPath, fit
 
 ## COORDINATE DESCENT ROUTINES
 S(z, γ) = ifelse(γ >= abs(z), zero(z), ifelse(z > 0, z - γ, z + γ))
@@ -23,7 +23,6 @@ type NaiveCoordinateDescent{T} <: CoordinateDescent{T}
     μy::T                         # mean of y at current weights
     μX::Vector{T}                 # mean of X at current weights
     Xssq::Vector{T}               # weighted sum of squares of each column of X
-                                  # XXX check if necessary?
     residuals::Vector{T}          # y - Xβ (unscaled with centered X)
     weights::Vector{T}            # weights for each observation
     dev::T                        # last deviance
@@ -305,6 +304,7 @@ function intercept{T}(coef::Vector{T}, cd::CoordinateDescent{T}, Xnorm::Vector{T
     end
     v
 end
+
 function linpred!{T}(mu::Vector{T}, X::Matrix{T}, coef::Vector{T}, b0::T)
     A_mul_B!(mu, X, coef)
     if b0 != 0
@@ -440,7 +440,7 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
 
         pct_dev[i] = 1 - dev_ratio
         coefs[:, i] = newcoef
-        b0s[i] = intercept(newcoef, cd, Xnorm)
+        b0s[i] = intercept(newcoef, cd#=, Xnorm=#)
 
         # Test whether we should continue
         if i == nλ || (autoλ && last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
@@ -506,7 +506,7 @@ function StatsBase.fit{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=fal
         dev_ratio = cd.dev/nulldev
         pct_dev[i] = 1 - dev_ratio
         coefs[:, i] = newcoef
-        b0s[i] = intercept(newcoef, cd, Xnorm)
+        b0s[i] = intercept(newcoef, cd#=, Xnorm=#)
 
         # Test whether we should continue
         if i == nλ || (autoλ && last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
@@ -599,8 +599,8 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
             λ = convert(Vector{T}, λ)
         end
 
-        # yscratch is just a placeholder here
-        model = LinearModel(LmResp{typeof(y)}(yscratch, off, wts, y), cd)
+        # First y is just a placeholder here
+        model = LinearModel(LmResp{typeof(y)}(y, off, wts, y), cd)
     else
         # Fit to find null deviance
         # Maybe we should use this GlmResp object?
@@ -623,8 +623,8 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
             subtract!(eta, off)
         end
 
-        # rr = GlmResp{typeof(y)}(y, d, l, eta, mu, offset, wts)
-        rr = GlmResp{typeof(y),typeof(d),typeof(l)}(y, d, l, eta, mu, offset, wts)
+         rr = GlmResp{typeof(y)}(y, d, l, eta, mu, offset, wts)
+        #rr = GlmResp{typeof(y),typeof(d),typeof(l)}(y, d, l, eta, mu, offset, wts)
         model = GeneralizedLinearModel(rr, cd, false)
     end
 
