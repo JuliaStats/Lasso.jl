@@ -7,6 +7,8 @@ julia:
   - nightly
 notifications:
   email: false
+before_install:
+  - sudo apt-get install gfortran -y
 script:
   - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
   - julia --check-bounds=yes -e 'Pkg.clone(pwd()); Pkg.build("Lasso"); Pkg.test("Lasso"; coverage=true)'
