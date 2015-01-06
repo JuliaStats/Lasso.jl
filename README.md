@@ -30,6 +30,8 @@ source [here](https://github.com/simonster/Lasso.jl/blob/3388dc338bfaa5a90280c90
  - More documentation than just this README
  - Offsets don't work
  - User-specified weights and `α != 1` are untested
+ - Support unpenalized variables besides the intercept
+ - Sparse matrix and custom AbstractMatrix support
  - Maybe integrate LARS.jl
 
 ## See also
