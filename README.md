@@ -27,6 +27,7 @@ source [here](https://github.com/simonster/Lasso.jl/blob/3388dc338bfaa5a90280c90
 
 ## TODO
 
+ - Get package to work with released versions of Julia (0.4: [JuliaLang/julia#9232](https://github.com/JuliaLang/julia/issues/9232), 0.3.4: [JuliaLang/julia#9630](https://github.com/JuliaLang/julia/issues/9630))
  - More documentation than just this README
  - Offsets don't work
  - User-specified weights and `α != 1` are untested
