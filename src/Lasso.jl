@@ -161,6 +161,7 @@ type CovarianceCoordinateDescent{T} <: CoordinateDescent{T}
     yty::T                        # y'y (scaled by weights)
     Xty::Vector{T}                # X'y (scaled by weights)
     XtX::Matrix{T}                # X'X (scaled by weights)
+    activeset::Vector{Int}        # set of non-zero predictors
     scratch::Vector{T}            # scratch for residual calculation
     dev::T                        # last deviance
     intercept::Bool               # whether an intercept should be fitted
@@ -169,10 +170,13 @@ type CovarianceCoordinateDescent{T} <: CoordinateDescent{T}
     tol::T                        # tolerance as ratio of deviance to null deviance
     abstol::T                     # tolerance in units of deviance
 
-    CovarianceCoordinateDescent{T}(X::Matrix{T}, intercept::Bool, α::T, maxiter::Int, tol::T) =
-        new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), similar(X, size(X, 2)),
-            similar(X, size(X, 2), size(X, 2)), similar(X, size(X, 2)), convert(T, NaN),
+    function CovarianceCoordinateDescent{T}(X::Matrix{T}, intercept::Bool, α::T, maxiter::Int, tol::T)
+        activeset = Int[]
+        sizehint!(activeset, max(size(X, 1), size(X, 2)))
+        new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Array(T, size(X, 2)),
+            Array(T, size(X, 2), size(X, 2)), activeset, Array(T, size(X, 2)), convert(T, NaN),
             intercept, α, maxiter, tol, convert(T, NaN))
+    end
 end
 
 # Updates CoordinateDescent object with (possibly) new y vector and
@@ -246,24 +250,61 @@ end
 function cycle!{T}(coef::Vector{T}, cd::CovarianceCoordinateDescent{T}, λ::T, α::T, all::Bool)
     Xty = cd.Xty
     XtX = cd.XtX
+    activeset = cd.activeset
 
     offset = 1
-    @inbounds for j = 1:size(XtX, 1)
-        # Use all variables for first and last iterations
-        if all || coef[j] != 0
-            s = (Xty[j] - BLAS.dot(size(XtX, 1), pointer(XtX, offset), 1, coef, 1)) + XtX[j, j]*coef[j]
-            coef[j] = S(s, λ*α)/(XtX[j, j] + λ*(1 - α))
+    if all
+        @inbounds for j = 1:size(XtX, 1)
+            # Use all variables for first and last iterations
+            s = Xty[j]
+            for i in activeset
+                i == j && continue
+                s -= XtX[i, j]*coef[i]
+            end
+            oldcoef = coef[j]
+            newcoef = coef[j] = S(s, λ*α)/(XtX[j, j] + λ*(1 - α))
+            if oldcoef == 0 && newcoef != 0
+                push!(activeset, j)
+            elseif oldcoef != 0 && newcoef == 0
+                deleteat!(activeset, findfirst(activeset, j))
+            end
             # println("s $j => $s, den = $((XtX[j, j] + λ*(1 - α)))")
             # println("$j => $(coef[j])")
+            offset += size(XtX, 1)
         end
-        offset += size(XtX, 1)
+    else
+        @inbounds for j in activeset
+            s = Xty[j]
+            for i in activeset
+                i == j && continue
+                s -= XtX[i, j]*coef[i]
+            end
+            oldcoef = coef[j]
+            newcoef = coef[j] = S(s, λ*α)/(XtX[j, j] + λ*(1 - α))
+            if oldcoef != 0 && newcoef == 0
+                deleteat!(activeset, findfirst(activeset, j))
+            end
+        end
     end
     # println()
 end
 
 # y'y - 2β'X'y + β'X'Xβ
-ssr{T}(coef::Vector{T}, cd::CovarianceCoordinateDescent{T}) =
-    cd.yty - 2*dot(coef, cd.Xty) + dot(coef, BLAS.symv!('U', one(T), cd.XtX, coef, zero(T), cd.scratch))
+function ssr{T}(coef::Vector{T}, cd::CovarianceCoordinateDescent{T})
+    # v = cd.yty - 2*dot(coef, cd.Xty) + dot(coef, BLAS.symv!('U', one(T), cd.XtX, coef, zero(T), cd.scratch))
+    XtX = cd.XtX
+    Xty = cd.Xty
+    v = cd.yty
+    activeset = cd.activeset
+    @inbounds for j in activeset
+        s = -2*Xty[j]
+        for i in activeset
+            s += XtX[i, j]*coef[i]
+        end
+        v += coef[j]*s
+    end
+    v
+end
 
 function fit!{T}(coef::Vector{T}, cd::CoordinateDescent{T}, λ)
     α = cd.α
