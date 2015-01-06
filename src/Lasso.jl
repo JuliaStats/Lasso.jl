@@ -617,8 +617,12 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
             subtract!(eta, off)
         end
 
-        # rr = GlmResp{typeof(y)}(y, d, l, eta, mu, offset, wts)
-        rr = GlmResp{typeof(y),typeof(d),typeof(l)}(y, d, l, eta, mu, offset, wts)
+        if length(GlmResp.parameters) == 3
+            # a hack so this works with my hacked up working copy of GLM
+            rr = GlmResp{typeof(y),typeof(d),typeof(l)}(y, d, l, eta, mu, offset, wts)
+        else
+            rr = GlmResp{typeof(y)}(y, d, l, eta, mu, offset, wts)
+        end
         model = GeneralizedLinearModel(rr, cd, false)
     end
 
