@@ -19,7 +19,7 @@ type GLMNetOp{Naive} end
 calc{Naive}(::GLMNetOp{Naive}, X, y) = glmnet(X, y, naivealgorithm=Naive)
 
 type LassoOp{Naive} end
-calc{Naive}(::LassoOp{Naive}, X, y) = fit(LassoPath, X, y, naivealgorithm=Naive)
+calc{Naive}(::LassoOp{Naive}, X, y) = fit(LassoPath, X, y, naivealgorithm=Naive, criterion=:coef)
 
 type LassoBenchmark{Op} <: Proc end
 Base.length(p::LassoBenchmark, n) = 0
@@ -40,6 +40,6 @@ cfgs = vec([begin
             end for ρ in [0, 0.1, 0.2, 0.5, 0.9, 0.95],
                (N, p) in [(1000, 100), (5000, 100), (100, 1000), (100, 5000), #=(100, 20000)=#]])
 rtable = run(Proc[LassoBenchmark{GLMNetOp{true}}(), LassoBenchmark{LassoOp{true}}(),
-                  LassoBenchmark{GLMNetOp{false}}(), LassoBenchmark{LassoOp{false}}()], cfgs)
+                  LassoBenchmark{GLMNetOp{false}}(), LassoBenchmark{LassoOp{false}}()], cfgs; allowgc=false)
 show(rtable; unit=:sec)
 end
