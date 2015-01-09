@@ -66,15 +66,31 @@ function addcoef!{T}(x::SparseCoefficients{T}, ipred::Int)
     x.predictor2coef[ipred] = coefindex
 end
 
-## UTILITIES
+## COEFFICIENT ITERATION IN SEQUENTIAL OR RANDOM ORDER
 
-# To make sure that results are reproducible on the same dataset
-function shuffle!(rng::AbstractRNG, a::AbstractVector)
-    @inbounds for i = length(a):-1:2
-        j = rand(rng, 1:i)
-        a[i], a[j] = a[j], a[i]
+immutable RandomCoefficientIterator
+    rng::MersenneTwister
+    rg::Base.Random.RangeGeneratorInt{Int,Uint}
+    coeforder::Vector{Int}
+end
+RandomCoefficientIterator() = RandomCoefficientIterator(MersenneTwister(1337), Base.Random.RangeGenerator(1:2), Int[])
+
+function Base.start(x::RandomCoefficientIterator)
+    if !isempty(x.coeforder)
+        @inbounds for i = length(x.coeforder):-1:2
+            j = rand(x.rng, x.rg)
+            x.coeforder[i], x.coeforder[j] = x.coeforder[j], x.coeforder[i]
+        end
     end
-    return a
+    return 1
+end
+Base.next(x::RandomCoefficientIterator, i) = (x.coeforder[i], i += 1)
+Base.done(x::RandomCoefficientIterator, i) = i > length(x.coeforder)
+
+addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
+function addcoef(x::RandomCoefficientIterator, icoef::Int)
+    push!(x.coeforder, icoef)
+    RandomCoefficientIterator(x.rng, Base.Random.RangeGenerator(1:length(x.coeforder)), x.coeforder)
 end
 
 ## COORDINATE DESCENT ROUTINES
@@ -89,7 +105,7 @@ function P{T}(α::T, β::SparseCoefficients{T})
 end
 
 abstract CoordinateDescent{T} <: LinPred
-type NaiveCoordinateDescent{T} <: CoordinateDescent{T}
+type NaiveCoordinateDescent{T,S<:Union(UnitRange{Int}, RandomCoefficientIterator)} <: CoordinateDescent{T}
     X::Matrix{T}                  # original design matrix
     Xdw::Matrix{T}                # X, decentered and weighted
     μy::T                         # mean of y at current weights
@@ -98,17 +114,16 @@ type NaiveCoordinateDescent{T} <: CoordinateDescent{T}
     residuals::Vector{T}          # y - Xβ (unscaled with centered X)
     weights::Vector{T}            # weights for each observation
     weightsuminv::T               # 1/sum(weights)
-    coeforder::Vector{Int}        # order of coefficients for partial passes
-    rng::MersenneTwister          # RNG for shuffling coefficients
+    coefitr::S                    # coefficient iterator
     dev::T                        # last deviance
     intercept::Bool               # whether an intercept should be fitted
     α::T                          # elastic net parameter
     maxiter::Int                  # maximum number of iterations
     tol::T                        # tolerance as ratio of deviance to null deviance
 
-    NaiveCoordinateDescent{T}(X::Matrix{T}, intercept::Bool, α::T, maxiter::Int, tol::T)  =
+    NaiveCoordinateDescent{T,S}(X::Matrix{T}, intercept::Bool, α::T, maxiter::Int, tol::T, coefitr::S)  =
         new(X, Array(T, size(X)), zero(T), zeros(T, size(X, 2)), Array(T, size(X, 2)),
-            Array(T, size(X, 1)), Array(T, size(X, 1)), convert(T, NaN), Int[], MersenneTwister(1337),
+            Array(T, size(X, 1)), Array(T, size(X, 1)), convert(T, NaN), coefitr,
             convert(T, NaN), intercept, α, maxiter, tol)
 end
 
@@ -190,7 +205,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
     weights = cd.weights
     Xssq = cd.Xssq
     μX = cd.μX
-    coeforder = cd.coeforder
+    coefitr = cd.coefitr
 
     ptr = pointer(Xdw)
     maxdelta = zero(T)
@@ -210,7 +225,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
             if oldcoef != newcoef
                 if icoef == 0
                     icoef = addcoef!(coef, ipred)
-                    push!(coeforder, icoef)
+                    cd.coefitr = addcoef(cd.coefitr, icoef)
                 end
                 coef.coef[icoef] = newcoef
                 cμX = μX[ipred]
@@ -221,8 +236,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
             end
         end
     else
-        shuffle!(cd.rng, coeforder)
-        @inbounds for icoef = coeforder
+        @inbounds for icoef = cd.coefitr
             oldcoef = coef.coef[icoef]
             oldcoef == 0 && continue
             ipred = coef.coef2predictor[icoef]
@@ -255,7 +269,7 @@ function ssr{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T})
     s
 end
 
-type CovarianceCoordinateDescent{T} <: CoordinateDescent{T}
+type CovarianceCoordinateDescent{T,S<:Union(UnitRange{Int}, RandomCoefficientIterator)} <: CoordinateDescent{T}
     X::Matrix{T}                  # original design matrix
     μy::T                         # mean of y at current weights
     μX::Vector{T}                 # mean of X at current weights
@@ -264,19 +278,18 @@ type CovarianceCoordinateDescent{T} <: CoordinateDescent{T}
     Xssq::Vector{T}               # weighted sum of squares of each column of X
     XtX::Matrix{T}                # X'X (scaled by weights, in order of coefficients)
     weights::Vector{T}            # weights for each observation
-    weightsuminv::T               # inverse of sum of weights
-    coeforder::Vector{Int}        # order of coefficients for partial passes
-    rng::MersenneTwister          # RNG for shuffling coefficients
+    weightsuminv::T               # 1/sum(weights)
+    coefitr::S                    # coefficient iterator
     dev::T                        # last deviance
     intercept::Bool               # whether an intercept should be fitted
     α::T                          # elastic net parameter
     maxiter::Int                  # maximum number of iterations
     tol::T                        # tolerance as ratio of deviance to null deviance
 
-    function CovarianceCoordinateDescent{T}(X::Matrix{T}, intercept::Bool, α::T, maxiter::Int, tol::T)
+    function CovarianceCoordinateDescent{T}(X::Matrix{T}, intercept::Bool, α::T, maxiter::Int, tol::T, coefiter::S)
         new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Array(T, size(X, 2)),
             Array(T, size(X, 2)), Array(T, min(5*size(X, 1), size(X, 2)), size(X, 2)), Array(T, size(X, 1)),
-            convert(T, NaN), Int[], MersenneTwister(1337), convert(T, NaN), intercept, α, maxiter, tol)
+            convert(T, NaN), coefiter, convert(T, NaN), intercept, α, maxiter, tol)
     end
 end
 
@@ -365,7 +378,6 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
     Xty = cd.Xty
     XtX = cd.XtX
     Xssq = cd.Xssq
-    coeforder = cd.coeforder
 
     maxdelta = 0.0
     if all
@@ -388,7 +400,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
             if oldcoef != newcoef
                 if icoef == 0
                     icoef = addcoef!(coef, ipred)
-                    push!(coeforder, icoef)
+                    cd.coefitr = addcoef(cd.coefitr, icoef)
 
                     # Compute cross-product with predictors
                     weights = cd.weights
@@ -409,8 +421,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
             # println("$j => $(coef[j])")
         end
     else
-        shuffle!(cd.rng, coeforder)
-        @inbounds for icoef = coeforder
+        @inbounds for icoef = cd.coefitr
             ipred = coef.coef2predictor[icoef]
             oldcoef = coef.coef[icoef]
             oldcoef == 0 && continue
@@ -740,7 +751,7 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
                                                      λminratio::Number=ifelse(size(X, 1) < size(X, 2), 0.01, 1e-4),
                                                      λ::Union(Vector,Nothing)=nothing, standardize::Bool=true,
                                                      intercept::Bool=true, naivealgorithm::Bool=true, dofit::Bool=true,
-                                                     irls_tol::Real=1e-7, fitargs...)
+                                                     irls_tol::Real=1e-7, randomize::Bool=true, fitargs...)
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
     n = length(y)
     length(wts) == n || error("length(wts) = $(length(wts)) should be 0 or $n")
@@ -759,8 +770,9 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
     # Lasso initialization
     α = convert(T, α)
     λminratio = convert(T, λminratio)
-    cd = naivealgorithm ? NaiveCoordinateDescent{T}(X, intercept, α, typemax(Int), 1e-7) :
-                          CovarianceCoordinateDescent{T}(X, intercept, α, typemax(Int), 1e-7)
+    coefitr = randomize ? RandomCoefficientIterator() : (1:0)
+    cd = naivealgorithm ? NaiveCoordinateDescent{T,typeof(coefitr)}(X, intercept, α, typemax(Int), 1e-7, coefitr) :
+                          CovarianceCoordinateDescent{T,typeof(coefitr)}(X, intercept, α, typemax(Int), 1e-7, coefitr)
 
     # GLM response initialization
     autoλ = λ == nothing

@@ -45,17 +45,22 @@ for (dist, link) in ((Normal(), IdentityLink()), (Binomial(), LogitLink()), (Poi
 
                 for naivealgorithm = [false, true]
                      context(naivealgorithm ? "naive" : "covariance") do
-                        # Now fit with Lasso
-                        l = fit(LassoPath, X, y, dist, link, λ=g.lambda, naivealgorithm=naivealgorithm, intercept=intercept, cd_tol=eps(), irls_tol=eps(), criterion=:coef)
+                        for randomize = [false, true]
+                            context(randomize ? "random" : "sequential") do
+                                # Now fit with Lasso
+                                l = fit(LassoPath, X, y, dist, link, λ=g.lambda, naivealgorithm=naivealgorithm, intercept=intercept,
+                                        cd_tol=eps(), irls_tol=eps(), criterion=:coef, randomize=randomize)
 
-                        # rd = (l.coefs - gbeta)./gbeta
-                        # rd[!isfinite(rd)] = 0
-                        # println("         coefs adiff = $(maxabs(l.coefs - gbeta)) rdiff = $(maxabs(rd))")
-                        # rd = (l.b0 - g.a0)./g.a0
-                        # rd[!isfinite(rd)] = 0
-                        # println("         b0    adiff = $(maxabs(l.b0 - g.a0)) rdiff = $(maxabs(rd))")
-                        @fact l.coefs => roughly(gbeta, 1e-6)
-                        @fact l.b0 => roughly(g.a0, 1e-6)
+                                # rd = (l.coefs - gbeta)./gbeta
+                                # rd[!isfinite(rd)] = 0
+                                # println("         coefs adiff = $(maxabs(l.coefs - gbeta)) rdiff = $(maxabs(rd))")
+                                # rd = (l.b0 - g.a0)./g.a0
+                                # rd[!isfinite(rd)] = 0
+                                # println("         b0    adiff = $(maxabs(l.b0 - g.a0)) rdiff = $(maxabs(rd))")
+                                @fact l.coefs => roughly(gbeta, 1e-6)
+                                @fact l.b0 => roughly(g.a0, 1e-6)
+                            end
+                        end
                     end
                 end
             end
