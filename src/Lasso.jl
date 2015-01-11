@@ -113,13 +113,13 @@ type NaiveCoordinateDescent{T,S<:Union(UnitRange{Int}, RandomCoefficientIterator
     Xssq::Vector{T}               # weighted sum of squares of each column of X
     residuals::Vector{T}          # y - Xβ (unscaled with centered X)
     weights::Vector{T}            # weights for each observation
-    weightsuminv::T               # 1/sum(weights)
+    weightsum::T                  # sum(weights)
     coefitr::S                    # coefficient iterator
     dev::T                        # last deviance
     intercept::Bool               # whether an intercept should be fitted
     α::T                          # elastic net parameter
     maxiter::Int                  # maximum number of iterations
-    tol::T                        # tolerance as ratio of deviance to null deviance
+    tol::T                        # tolerance
 
     NaiveCoordinateDescent{T,S}(X::Matrix{T}, intercept::Bool, α::T, maxiter::Int, tol::T, coefitr::S)  =
         new(X, Array(T, size(X)), zero(T), zeros(T, size(X, 2)), Array(T, size(X, 2)),
@@ -135,8 +135,8 @@ function update!{T}(cd::NaiveCoordinateDescent{T}, coef::SparseCoefficients{T}, 
     Xssq = cd.Xssq
     Xdw = cd.Xdw
     weights = copy!(cd.weights, wt)
-    # weights = scale!(cd.weights, wt, 1/length(y))
-    weightsuminv = cd.weightsuminv = inv(sum(weights))
+    weightsum = cd.weightsum = sum(weights)
+    weightsuminv = inv(weightsum)
 
     A_mul_B!(residuals, X, coef)
     @simd for i = 1:length(y)
@@ -255,7 +255,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
             maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[ipred])
         end
     end
-    maxdelta*cd.weightsuminv
+    maxdelta/cd.weightsum
 end
 
 # Sum of squared residuals. Residuals are always up to date
@@ -277,20 +277,42 @@ type CovarianceCoordinateDescent{T,S<:Union(UnitRange{Int}, RandomCoefficientIte
     Xty::Vector{T}                # X'y (scaled by weights)
     Xssq::Vector{T}               # weighted sum of squares of each column of X
     XtX::Matrix{T}                # X'X (scaled by weights, in order of coefficients)
+    tmp::Vector{T}                # scratch used when computing X'X
     weights::Vector{T}            # weights for each observation
-    weightsuminv::T               # 1/sum(weights)
+    weightsum::T                  # sum(weights)
     coefitr::S                    # coefficient iterator
     dev::T                        # last deviance
     intercept::Bool               # whether an intercept should be fitted
     α::T                          # elastic net parameter
     maxiter::Int                  # maximum number of iterations
-    tol::T                        # tolerance as ratio of deviance to null deviance
+    tol::T                        # tolerance
 
     function CovarianceCoordinateDescent{T}(X::Matrix{T}, intercept::Bool, α::T, maxiter::Int, tol::T, coefiter::S)
         new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Array(T, size(X, 2)),
             Array(T, size(X, 2)), Array(T, min(5*size(X, 1), size(X, 2)), size(X, 2)), Array(T, size(X, 1)),
-            convert(T, NaN), coefiter, convert(T, NaN), intercept, α, maxiter, tol)
+            Array(T, size(X, 1)), convert(T, NaN), coefiter, convert(T, NaN), intercept, α, maxiter, tol)
     end
+end
+
+# Compute XtX
+# Equivalent to (X .- μX)'(weights.*(X[:, icoef] - μX[icoef]))
+function computeXtX!(cd, icoef, ipred)
+    X = cd.X
+    tmp = cd.tmp
+    weights = cd.weights
+    XtX = cd.XtX
+    μX = cd.μX
+
+    @simd for i = 1:size(cd.X, 1)
+        @inbounds tmp[i] = X[i, ipred]*weights[i]
+    end
+
+    At_mul_B!(slice(XtX, icoef, :), cd.X, tmp)
+    μw = μX[ipred]*cd.weightsum
+    for j = 1:size(X, 2)
+        @inbounds XtX[icoef, j] = XtX[icoef, j]-μX[j]*μw
+    end
+    cd
 end
 
 # Updates CoordinateDescent object with (possibly) new y vector and
@@ -302,7 +324,8 @@ function update!{T}(cd::CovarianceCoordinateDescent{T}, coef::SparseCoefficients
     Xssq = cd.Xssq
     XtX = cd.XtX
     weights = copy!(cd.weights, wt)
-    weightsuminv = cd.weightsuminv = inv(sum(weights))
+    weightsum = cd.weightsum = sum(weights)
+    weightsuminv = inv(weightsum)
     if cd.intercept
         # Compute μy
         μy = zero(T)
@@ -330,9 +353,9 @@ function update!{T}(cd::CovarianceCoordinateDescent{T}, coef::SparseCoefficients
             # Compute Xssq and X'y
             v = zero(T)
             ws = zero(T)
-            @simd for i = 1:size(X, 1)
+            @inbounds @simd for i = 1:size(X, 1)
                 ws += abs2(X[i, j] - μ)*weights[i]
-                @inbounds v += (y[i] - μy)*(X[i, j] - μ)*weights[i]
+                v += (y[i] - μy)*(X[i, j] - μ)*weights[i]
             end
             Xssq[j] = ws
             Xty[j] = v
@@ -348,9 +371,9 @@ function update!{T}(cd::CovarianceCoordinateDescent{T}, coef::SparseCoefficients
             # Compute Xssq and X'y
             v = zero(T)
             ws = zero(T)
-            @simd for i = 1:size(X, 1)
+            @inbounds @simd for i = 1:size(X, 1)
                 ws += abs2(X[i, j])*weights[i]
-                @inbounds v += y[i]*X[i, j]*weights[i]
+                v += y[i]*X[i, j]*weights[i]
             end
             Xssq[j] = ws
             Xty[j] = v
@@ -358,16 +381,8 @@ function update!{T}(cd::CovarianceCoordinateDescent{T}, coef::SparseCoefficients
     end
 
     for icoef = 1:nnz(coef)
-        ipred = coef.coef2predictor[icoef]
-        for jpred = 1:size(X, 2)
-            s = 0.0
-            @simd for i = 1:size(X, 1)
-                s += (X[i, ipred] - μX[ipred])*(X[i, jpred] - μX[jpred])*weights[i]
-            end
-            XtX[icoef, jpred] = s
-        end
+        computeXtX!(cd, icoef, coef.coef2predictor[icoef])
     end
-
     cd.yty = yty
 
     cd
@@ -403,16 +418,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
                     cd.coefitr = addcoef(cd.coefitr, icoef)
 
                     # Compute cross-product with predictors
-                    weights = cd.weights
-                    X = cd.X
-                    μX = cd.μX
-                    for jpred = 1:size(X, 2)
-                        s = 0.0
-                        @simd for i = 1:size(X, 1)
-                            s += (X[i, ipred] - μX[ipred])*(X[i, jpred] - μX[jpred])*weights[i]
-                        end
-                        XtX[icoef, jpred] = s
-                    end
+                    computeXtX!(cd, icoef, ipred)
                 end
                 maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[ipred])
                 coef.coef[icoef] = newcoef
@@ -433,8 +439,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
             maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[ipred])
         end
     end
-    maxdelta
-    # println()
+    maxdelta/cd.weightsum
 end
 
 # y'y - 2β'X'y + β'X'Xβ
@@ -625,14 +630,12 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
             elseif criterion == :coef
                 maxdelta = zero(T)
                 Xssq = cd.Xssq
-                weightsuminv = cd.weightsuminv
                 for icoef = 1:nnz(newcoef)
                     oldcoefval = icoef > nnz(oldcoef) ? zero(T) : oldcoef.coef[icoef]
                     ipred = newcoef.coef2predictor[icoef]
-                    maxdelta = max(maxdelta, abs2(oldcoefval - newcoef.coef[icoef])*Xssq[ipred]*weightsuminv)
+                    maxdelta = max(maxdelta, abs2(oldcoefval - newcoef.coef[icoef])*Xssq[ipred])
                 end
-
-                converged = maxdelta < irls_tol
+                converged = maxdelta < irls_tol*cd.weightsum
             end
 
             converged && break
