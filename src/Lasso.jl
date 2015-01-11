@@ -68,11 +68,20 @@ end
 
 ## COEFFICIENT ITERATION IN SEQUENTIAL OR RANDOM ORDER
 
-immutable RandomCoefficientIterator
-    rng::MersenneTwister
-    rg::Base.Random.RangeGeneratorInt{Int,Uint}
-    coeforder::Vector{Int}
+if VERSION >= v"0.4-dev+1915"
+    immutable RandomCoefficientIterator
+        rng::MersenneTwister
+        rg::Base.Random.RangeGeneratorInt{Int,Uint}
+        coeforder::Vector{Int}
+    end
+    const RANDOMIZE_DEFAULT = true
+else
+    immutable RandomCoefficientIterator
+        RandomCoefficientIterator() = error("randomization not supported on Julia 0.3")
+    end
+    const RANDOMIZE_DEFAULT = false
 end
+
 RandomCoefficientIterator() = RandomCoefficientIterator(MersenneTwister(1337), Base.Random.RangeGenerator(1:2), Int[])
 
 function Base.start(x::RandomCoefficientIterator)
@@ -87,11 +96,13 @@ end
 Base.next(x::RandomCoefficientIterator, i) = (x.coeforder[i], i += 1)
 Base.done(x::RandomCoefficientIterator, i) = i > length(x.coeforder)
 
-addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
 function addcoef(x::RandomCoefficientIterator, icoef::Int)
     push!(x.coeforder, icoef)
     RandomCoefficientIterator(x.rng, Base.Random.RangeGenerator(1:length(x.coeforder)), x.coeforder)
 end
+typealias CoefficientIterator Union(UnitRange{Int}, RandomCoefficientIterator)
+
+addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
 
 ## COORDINATE DESCENT ROUTINES
 S(z, γ) = ifelse(γ >= abs(z), zero(z), ifelse(z > 0, z - γ, z + γ))
@@ -105,7 +116,7 @@ function P{T}(α::T, β::SparseCoefficients{T})
 end
 
 abstract CoordinateDescent{T} <: LinPred
-type NaiveCoordinateDescent{T,S<:Union(UnitRange{Int}, RandomCoefficientIterator)} <: CoordinateDescent{T}
+type NaiveCoordinateDescent{T,S<:CoefficientIterator} <: CoordinateDescent{T}
     X::Matrix{T}                  # original design matrix
     Xdw::Matrix{T}                # X, decentered and weighted
     μy::T                         # mean of y at current weights
@@ -269,7 +280,7 @@ function ssr{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T})
     s
 end
 
-type CovarianceCoordinateDescent{T,S<:Union(UnitRange{Int}, RandomCoefficientIterator)} <: CoordinateDescent{T}
+type CovarianceCoordinateDescent{T,S<:CoefficientIterator} <: CoordinateDescent{T}
     X::Matrix{T}                  # original design matrix
     μy::T                         # mean of y at current weights
     μX::Vector{T}                 # mean of X at current weights
@@ -754,7 +765,7 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
                                                      λminratio::Number=ifelse(size(X, 1) < size(X, 2), 0.01, 1e-4),
                                                      λ::Union(Vector,Nothing)=nothing, standardize::Bool=true,
                                                      intercept::Bool=true, naivealgorithm::Bool=true, dofit::Bool=true,
-                                                     irls_tol::Real=1e-7, randomize::Bool=true, fitargs...)
+                                                     irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT, fitargs...)
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
     n = length(y)
     length(wts) == n || error("length(wts) = $(length(wts)) should be 0 or $n")

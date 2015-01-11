@@ -45,7 +45,7 @@ for (dist, link) in ((Normal(), IdentityLink()), (Binomial(), LogitLink()), (Poi
 
                 for naivealgorithm = [false, true]
                      context(naivealgorithm ? "naive" : "covariance") do
-                        for randomize = [false, true]
+                        for randomize = VERSION >= v"0.4-dev+1915" ? [false, true] : [false]
                             context(randomize ? "random" : "sequential") do
                                 # Now fit with Lasso
                                 l = fit(LassoPath, X, y, dist, link, λ=g.lambda, naivealgorithm=naivealgorithm, intercept=intercept,
