@@ -309,7 +309,10 @@ end
 
 # Compute XtX
 # Equivalent to (X .- μX)'(weights.*(X[:, icoef] - μX[icoef]))
-function computeXtX!(cd, icoef, ipred)
+#
+# This must be called for all icoef < icoef before it may be called
+# for a given icoef
+function computeXtX!{T}(cd::CovarianceCoordinateDescent{T}, coef::SparseCoefficients{T}, icoef::Int, ipred::Int)
     X = cd.X
     tmp = cd.tmp
     weights = cd.weights
@@ -320,10 +323,24 @@ function computeXtX!(cd, icoef, ipred)
         @inbounds tmp[i] = X[i, ipred]*weights[i]
     end
 
-    At_mul_B!(slice(XtX, icoef, :), cd.X, tmp)
+    # Why is BLAS slower at this?
+    # At_mul_B!(slice(XtX, icoef, :), cd.X, tmp)
     μw = μX[ipred]*cd.weightsum
-    for j = 1:size(X, 2)
-        @inbounds XtX[icoef, j] = XtX[icoef, j]-μX[j]*μw
+    @inbounds for jpred = 1:size(X, 2)
+        if jpred == ipred
+            XtX[icoef, jpred] = cd.Xssq[jpred]
+        else
+            jcoef = coef.predictor2coef[jpred]
+            if 0 < jcoef < icoef
+                XtX[icoef, jpred] = XtX[jcoef, ipred]
+            else
+                s = zero(T)
+                @simd for i = 1:size(X, 1)
+                    s += tmp[i]*X[i, jpred]
+                end
+                XtX[icoef, jpred] = s-μX[jpred]*μw
+            end
+        end
     end
     cd
 end
@@ -394,11 +411,19 @@ function update!{T}(cd::CovarianceCoordinateDescent{T}, coef::SparseCoefficients
     end
 
     for icoef = 1:nnz(coef)
-        computeXtX!(cd, icoef, coef.coef2predictor[icoef])
+        computeXtX!(cd, coef, icoef, coef.coef2predictor[icoef])
     end
     cd.yty = yty
 
     cd
+end
+
+function compute_gradient(XtX, coef, ipred)
+    s = 0.0
+    @simd for jcoef = 1:nnz(coef)
+        @inbounds s += XtX[jcoef, ipred]*coef.coef[jcoef]
+    end
+    s
 end
 
 # Performs the cycle of all predictors
@@ -411,10 +436,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
     if all
         @inbounds for ipred = 1:length(Xty)
             # Use all variables for first and last iterations
-            s = Xty[ipred]
-            @simd for jcoef = 1:nnz(coef)
-                s -= XtX[jcoef, ipred]*coef.coef[jcoef]
-            end
+            s = Xty[ipred] - compute_gradient(XtX, coef, ipred)
 
             icoef = coef.predictor2coef[ipred]
             if icoef != 0
@@ -431,7 +453,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
                     cd.coefitr = addcoef(cd.coefitr, icoef)
 
                     # Compute cross-product with predictors
-                    computeXtX!(cd, icoef, ipred)
+                    computeXtX!(cd, coef, icoef, ipred)
                 end
                 maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[ipred])
                 coef.coef[icoef] = newcoef
@@ -444,10 +466,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
             ipred = coef.coef2predictor[icoef]
             oldcoef = coef.coef[icoef]
             oldcoef == 0 && continue
-            s = Xty[ipred] + XtX[icoef, ipred]*oldcoef
-            @simd for jcoef = 1:nnz(coef)
-                s -= XtX[jcoef, ipred]*coef.coef[jcoef]
-            end
+            s = Xty[ipred] + XtX[icoef, ipred]*oldcoef - compute_gradient(XtX, coef, ipred)
             newcoef = coef.coef[icoef] = S(s, λ*α)/(Xssq[ipred] + λ*(1 - α))
             maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[ipred])
         end
@@ -462,10 +481,7 @@ function ssr{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{T})
     v = cd.yty
     @inbounds for icoef = 1:nnz(coef)
         ipred = coef.coef2predictor[icoef]
-        s = -2*Xty[ipred]
-        @simd for jcoef = 1:nnz(coef)
-            s += XtX[jcoef, ipred]*coef.coef[jcoef]
-        end
+        s = -2*Xty[ipred] + compute_gradient(XtX, coef, ipred)
         v += coef.coef[icoef]*s
     end
     v
