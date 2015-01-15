@@ -105,7 +105,7 @@ typealias CoefficientIterator Union(UnitRange{Int}, RandomCoefficientIterator)
 addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
 
 ## COORDINATE DESCENT ROUTINES
-S(z, γ) = ifelse(γ >= abs(z), zero(z), ifelse(z > 0, z - γ, z + γ))
+S(z, γ) = γ >= abs(z) ? zero(z) : ifelse(z > 0, z - γ, z + γ)
 
 function P{T}(α::T, β::SparseCoefficients{T})
     x = zero(T)
@@ -208,6 +208,22 @@ function update!{T}(cd::NaiveCoordinateDescent{T}, coef::SparseCoefficients{T}, 
     cd
 end
 
+@inline function compute_newcoef(Xdw, residuals, sq, oldcoef, ipred, λ, α)
+    v = sq*oldcoef
+    @simd for i = 1:size(Xdw, 1)
+        @inbounds v += Xdw[i, ipred]*residuals[i]
+    end
+    S(v, λ*α)/(sq + λ*(1 - α))
+    # println("s $ipred => $v, den = $((sq + λ*(1 - α)))")
+    # println("$ipred => $newcoef")
+end
+
+@inline function update_residuals!(X, residuals, μ, coefdiff, ipred)
+    @simd for i = 1:size(X, 1)
+        @inbounds residuals[i] += coefdiff*(X[i, ipred] - μ)
+    end
+end
+
 # Performs the cycle of all predictors
 function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, λ::T, α::T, all::Bool)
     X = cd.X
@@ -218,52 +234,38 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
     μX = cd.μX
     coefitr = cd.coefitr
 
-    ptr = pointer(Xdw)
     maxdelta = zero(T)
-    if all
-        @inbounds for ipred = 1:size(X, 2)
-            # Use all variables for first and last iterations
-
-            # Update coefficient
+    @inbounds if all
+        # Use all variables for first and last iterations
+        for ipred = 1:size(X, 2)
             icoef = coef.predictor2coef[ipred]
             oldcoef = icoef == 0 ? zero(T) : coef.coef[icoef]
-            v = Xssq[ipred]*oldcoef + BLAS.dot(size(X, 1), ptr+(ipred-1)*size(X, 1)*sizeof(T), 1, residuals, 1)
-            newcoef = S(v, λ*α)/(Xssq[ipred] + λ*(1 - α))
-            # println("s $ipred => $v, den = $((Xssq[ipred] + λ*(1 - α)))")
-            # println("$ipred => $newcoef")
+            newcoef = compute_newcoef(Xdw, residuals, Xssq[ipred], oldcoef, ipred, λ, α)
 
-            # Update residual
             if oldcoef != newcoef
                 if icoef == 0
                     icoef = addcoef!(coef, ipred)
                     cd.coefitr = addcoef(cd.coefitr, icoef)
                 end
                 coef.coef[icoef] = newcoef
-                cμX = μX[ipred]
-                @simd for i = 1:length(residuals)
-                    residuals[i] += (oldcoef - newcoef)*(X[i, ipred] - cμX)
-                end
+                update_residuals!(X, residuals, μX[ipred], oldcoef - newcoef, ipred)
                 maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[ipred])
             end
         end
     else
-        @inbounds for icoef = cd.coefitr
+        for icoef = cd.coefitr
             oldcoef = coef.coef[icoef]
             oldcoef == 0 && continue
             ipred = coef.coef2predictor[icoef]
 
-            # Update coefficient
-            v = Xssq[ipred]*oldcoef + BLAS.dot(size(X, 1), ptr+(ipred-1)*size(X, 1)*sizeof(T), 1, residuals, 1)
-            newcoef = coef.coef[icoef] = S(v, λ*α)/(Xssq[ipred] + λ*(1 - α))
-            # println("s $j => $v, den = $((Xssq[j] + λ*(1 - α)))")
-            # println("$j => $(coef[j])")
+            v = Xssq[ipred]*oldcoef
+            newcoef = compute_newcoef(Xdw, residuals, Xssq[ipred], oldcoef, ipred, λ, α)
 
-            # Update residual
-            cμX = μX[ipred]
-            @simd for i = 1:length(residuals)
-                residuals[i] += (oldcoef - newcoef)*(X[i, ipred] - cμX)
+            if oldcoef != newcoef
+                coef.coef[icoef] = newcoef
+                update_residuals!(X, residuals, μX[ipred], oldcoef - newcoef, ipred)
+                maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[ipred])
             end
-            maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[ipred])
         end
     end
     maxdelta/cd.weightsum
@@ -455,7 +457,6 @@ end
 
 # y'y - 2β'X'y + β'X'Xβ
 function ssr{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{T})
-    # v = cd.yty - 2*dot(coef, cd.Xty) + dot(coef, BLAS.symv!('U', one(T), cd.XtX, coef, zero(T), cd.scratch))
     XtX = cd.XtX
     Xty = cd.Xty
     v = cd.yty
@@ -530,7 +531,7 @@ type LassoPath{S<:Union(LinearModel, GeneralizedLinearModel),T} <: RegressionMod
     autoλ::Bool             # whether λ is automatically determined
     Xnorm::Vector{T}        # original norms of columns of X before standardization
     pct_dev::Vector{T}      # percent deviance explained by each model
-    coefs::Matrix{T}        # model coefficients
+    coefs::SparseMatrixCSC{T,Int}        # model coefficients
     b0::Vector{T}           # model intercepts
 
     LassoPath(m, nulldev::T, nullb0::T, λ::Vector{T}, autoλ::Bool, Xnorm::Vector{T}) =
@@ -547,6 +548,23 @@ end
 
 const MIN_DEV_FRAC_DIFF = 1e-5
 const MAX_DEV_FRAC = 0.999
+
+function addcoefs!(coefs::SparseMatrixCSC, newcoef::SparseCoefficients, i::Int)
+    n = nnz(coefs)
+    nzval = coefs.nzval
+    rowval = coefs.rowval
+    resize!(nzval, n+length(newcoef.coef))
+    resize!(rowval, n+length(newcoef.coef))
+    @inbounds for ipred = 1:length(newcoef.predictor2coef)
+        icoef = newcoef.predictor2coef[ipred]
+        if icoef != 0
+            n += 1
+            nzval[n] = newcoef.coef[icoef]
+            rowval[n] = ipred
+        end
+    end
+    coefs.colptr[i+1:end] = length(coefs.nzval)+1
+end
 
 # Fits GLMs (outer and middle loops)
 function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbose::Bool=false, irls_maxiter::Int=30,
@@ -569,7 +587,7 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
 
     X = cd.X
     α = cd.α
-    coefs = Array(T, size(X, 2), nλ)
+    coefs = spzeros(T, size(X, 2), nλ)
     b0s = zeros(T, nλ)
     oldcoef = SparseCoefficients{T}(size(X, 2))
     newcoef = SparseCoefficients{T}(size(X, 2))
@@ -656,7 +674,7 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
         dev_ratio = dev/nulldev
 
         pct_dev[i] = 1 - dev_ratio
-        coefs[:, i] = newcoef
+        addcoefs!(coefs, newcoef, i)
         b0s[i] = b0
 
         # Test whether we should continue
@@ -697,7 +715,7 @@ function StatsBase.fit{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=fal
     cd.tol = cd_tol
 
     X = cd.X
-    coefs = Array(T, size(X, 2), nλ)
+    coefs = spzeros(T, size(X, 2), nλ)
     b0s = zeros(T, nλ)
     newcoef = SparseCoefficients{T}(size(X, 2))
     pct_dev = zeros(nλ)
@@ -707,7 +725,6 @@ function StatsBase.fit{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=fal
 
     if autoλ
         # No need to fit the first model
-        coefs[:, 1] = zero(T)
         b0s[1] = path.nullb0
         i = 2
     else
@@ -723,7 +740,7 @@ function StatsBase.fit{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=fal
 
         dev_ratio = cd.dev/nulldev
         pct_dev[i] = 1 - dev_ratio
-        coefs[:, i] = newcoef
+        addcoefs!(coefs, newcoef, i)
         b0s[i] = intercept(newcoef, cd)
 
         # Test whether we should continue
