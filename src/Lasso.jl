@@ -16,7 +16,7 @@ immutable SparseCoefficients{T} <: AbstractVector{T}
     SparseCoefficients(n::Int) = new(T[], Int[], zeros(Int, n))
 end
 
-function A_mul_B!{T}(out::Vector, X::Matrix, coef::SparseCoefficients{T})
+function Base.A_mul_B!{T}(out::Vector, X::Matrix, coef::SparseCoefficients{T})
     fill!(out, zero(eltype(out)))
     @inbounds for icoef = 1:nnz(coef)
         ipred = coef.coef2predictor[icoef]
@@ -27,7 +27,7 @@ function A_mul_B!{T}(out::Vector, X::Matrix, coef::SparseCoefficients{T})
     out
 end
 
-function dot{T}(x::Vector{T}, coef::SparseCoefficients{T})
+function Base.dot{T}(x::Vector{T}, coef::SparseCoefficients{T})
     v = 0.0
     @inbounds @simd for icoef = 1:nnz(coef)
         v += x[coef.coef2predictor[icoef]]*coef.coef[icoef]
@@ -138,6 +138,16 @@ type NaiveCoordinateDescent{T,S<:CoefficientIterator} <: CoordinateDescent{T}
             convert(T, NaN), intercept, α, maxiter, tol)
 end
 
+function compute_ws_Xdw!(Xdw, X, weights, μ, j)
+    ws = zero(eltype(Xdw))
+    @inbounds @simd for i = 1:size(X, 1)
+        xmu = X[i, j] - μ
+        xmuw = Xdw[i, j] = xmu*weights[i]
+        ws += xmu*xmuw
+    end
+    ws
+end
+
 # Updates CoordinateDescent object with (possibly) new y vector and
 # weights
 function update!{T}(cd::NaiveCoordinateDescent{T}, coef::SparseCoefficients{T}, y::Vector{T}, wt::Vector{T})
@@ -166,13 +176,7 @@ function update!{T}(cd::NaiveCoordinateDescent{T}, coef::SparseCoefficients{T}, 
             μX[j] = μ
 
             # Update Xssq
-            ws = zero(T)
-            @simd for i = 1:size(X, 1)
-                xmu = X[i, j] - μ
-                xmuw = Xdw[i, j] = xmu*weights[i]
-                ws += xmu*xmuw
-            end
-            Xssq[j] = ws
+            Xssq[j] = compute_ws_Xdw!(Xdw, X, weights, μ, j)
         end
 
         # Compute μy and μres
@@ -249,6 +253,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
                 end
                 coef.coef[icoef] = newcoef
                 update_residuals!(X, residuals, μX[ipred], oldcoef - newcoef, ipred)
+                # println("1 ipred = ", ipred, " diff = ", oldcoef - newcoef, " sq = ", Xssq[ipred])
                 maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[ipred])
             end
         end
@@ -264,11 +269,12 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
             if oldcoef != newcoef
                 coef.coef[icoef] = newcoef
                 update_residuals!(X, residuals, μX[ipred], oldcoef - newcoef, ipred)
+                # println("2 ipred = ", ipred, " diff = ", oldcoef - newcoef, " sq = ", Xssq[ipred])
                 maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[ipred])
             end
         end
     end
-    maxdelta/cd.weightsum
+    maxdelta#/cd.weightsum
 end
 
 # Sum of squared residuals. Residuals are always up to date
@@ -381,8 +387,8 @@ function update!{T}(cd::CovarianceCoordinateDescent{T}, coef::SparseCoefficients
             μX[j] = μ
 
             # Compute Xssq and X'y
-            v = zero(T)
             ws = zero(T)
+            v = zero(T)
             @inbounds @simd for i = 1:size(X, 1)
                 ws += abs2(X[i, j] - μ)*weights[i]
                 v += (y[i] - μy)*(X[i, j] - μ)*weights[i]
@@ -471,7 +477,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
             maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[ipred])
         end
     end
-    maxdelta/cd.weightsum
+    maxdelta#/cd.weightsum
 end
 
 # y'y - 2β'X'y + β'X'Xβ
@@ -498,9 +504,15 @@ function fit!{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T}, λ, crit
     dev = convert(T, Inf)
     prev_converged = false
     converged = true
+    b0 = intercept(coef, cd)
 
+    iter = 0
     for iter = 1:maxiter
+        oldb0 = b0
         maxdelta = cycle!(coef, cd, λ, α, converged)
+        b0 = intercept(coef, cd)
+        maxdelta = max(maxdelta, abs2(oldb0 - b0)*cd.weightsum)
+        # println("b0diff = ", oldb0 - b0, " weightsum = ", cd.weightsum)
 
         # Test for convergence
         prev_converged = converged
@@ -522,10 +534,10 @@ function fit!{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T}, λ, crit
     (!prev_converged || !converged) && error("coordinate descent failed to converge in $maxiter iterations at λ = $λ")
 
     cd.dev = criterion == :coef ? ssr(coef, cd) : dev
-    coef
+    iter
 end
 
-intercept{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T}) = cd.intercept ? cd.μy .- dot(cd.μX, coef) : zero(T)
+intercept{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T}) = cd.intercept ? cd.μy - dot(cd.μX, coef) : zero(T)
 
 function linpred!{T}(mu::Vector{T}, X::Matrix{T}, coef::SparseCoefficients{T}, b0::T)
     A_mul_B!(mu, X, coef)
@@ -541,22 +553,23 @@ end
 
 type LassoPath{S<:Union(LinearModel, GeneralizedLinearModel),T} <: RegressionModel
     m::S
-    nulldev::T              # null deviance
-    nullb0::T               # intercept of null model, if one was fit
-    λ::Vector{T}            # shrinkage parameters
-    autoλ::Bool             # whether λ is automatically determined
-    Xnorm::Vector{T}        # original norms of columns of X before standardization
-    pct_dev::Vector{T}      # percent deviance explained by each model
-    coefs::SparseMatrixCSC{T,Int}        # model coefficients
-    b0::Vector{T}           # model intercepts
+    nulldev::T                    # null deviance
+    nullb0::T                     # intercept of null model, if one was fit
+    λ::Vector{T}                  # shrinkage parameters
+    autoλ::Bool                   # whether λ is automatically determined
+    Xnorm::Vector{T}              # original squared norms of columns of X before standardization
+    pct_dev::Vector{T}            # percent deviance explained by each model
+    coefs::SparseMatrixCSC{T,Int} # model coefficients
+    b0::Vector{T}                 # model intercepts
+    niter::Int                    # number of coordinate descent iterations
 
     LassoPath(m, nulldev::T, nullb0::T, λ::Vector{T}, autoλ::Bool, Xnorm::Vector{T}) =
         new(m, nulldev, nullb0, λ, autoλ, Xnorm)
 end
 
 function Base.show(io::IO, path::LassoPath)
-    prefix = isa(path.m, GeneralizedLinearModel) ? typeof(path.m.rr.d).name.name*" " : "" 
-    println(io, prefix*"Lasso Solution Path ($(size(path.coefs, 2)) solutions for $(size(path.coefs, 1)) predictors):")
+    prefix = isa(path.m, GeneralizedLinearModel) ? string(typeof(path.m.rr.d).name.name, " ") : "" 
+    println(io, prefix*"Lasso Solution Path ($(size(path.coefs, 2)) solutions for $(size(path.coefs, 1)) predictors in $(path.niter) iterations):")
     Base.showarray(io, [path.λ path.pct_dev sum(path.coefs .!= 0, 1)']; header=false)
 end
 
@@ -582,6 +595,13 @@ function addcoefs!(coefs::SparseMatrixCSC, newcoef::SparseCoefficients, i::Int)
     coefs.colptr[i+1:end] = length(coefs.nzval)+1
 end
 
+function add!(out, x, y)
+    @simd for i = 1:length(out)
+        @inbounds out[i] = x[i] + y[i]
+    end
+    out
+end
+
 # Fits GLMs (outer and middle loops)
 function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbose::Bool=false, irls_maxiter::Int=30,
                                                     cd_maxiter::Int=100000, cd_tol::Real=1e-7, irls_tol::Real=1e-7,
@@ -600,6 +620,11 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
     cd = m.pp
     cd.maxiter = cd_maxiter
     cd.tol = cd_tol
+
+    if criterion == :coef
+        cd_tol *= path.nulldev/2
+        irls_tol *= path.nulldev/2
+    end
 
     X = cd.X
     α = cd.α
@@ -626,10 +651,13 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
     end
 
     dev = NaN
+    niter = 0
     while true # outer loop
         obj = convert(T, Inf)
         last_dev_ratio = dev_ratio
         curλ = λ[i]
+        # println()
+        # println("λ = $curλ")
 
         converged = false
 
@@ -638,13 +666,11 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
             oldb0 = b0
 
             # Compute working response
-            for j = 1:length(wrkresid)
-                scratchmu[j] = eta[j] + wrkresid[j]
-            end
+            add!(scratchmu, eta, wrkresid)
             wrkwt = wrkwt!(r)
 
             # Run coordinate descent inner loop
-            fit!(newcoef, update!(cd, newcoef, scratchmu, wrkwt), curλ, criterion)
+            niter += fit!(newcoef, update!(cd, newcoef, scratchmu, wrkwt), curλ, criterion)
             b0 = intercept(newcoef, cd)
 
             # Update GLM and get deviance
@@ -675,12 +701,16 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
             elseif criterion == :coef
                 maxdelta = zero(T)
                 Xssq = cd.Xssq
+                converged = true
                 for icoef = 1:nnz(newcoef)
                     oldcoefval = icoef > nnz(oldcoef) ? zero(T) : oldcoef.coef[icoef]
                     ipred = newcoef.coef2predictor[icoef]
-                    maxdelta = max(maxdelta, abs2(oldcoefval - newcoef.coef[icoef])*Xssq[ipred])
+                    # println("3 ipred = ", ipred, " diff = ", oldcoefval - newcoef.coef[icoef], " sq = ", Xssq[ipred])
+                    if abs2(oldcoefval - newcoef.coef[icoef])*Xssq[ipred] > irls_tol
+                        converged = false
+                        break
+                    end
                 end
-                converged = maxdelta < irls_tol*cd.weightsum
             end
 
             converged && break
@@ -706,6 +736,7 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
     path.pct_dev = pct_dev[1:i]
     path.coefs = coefs[:, 1:i]
     path.b0 = b0s[1:i]
+    path.niter = niter
     if !isempty(Xnorm)
         scale!(Xnorm, path.coefs)
     end
@@ -736,6 +767,7 @@ function StatsBase.fit{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=fal
     newcoef = SparseCoefficients{T}(size(X, 2))
     pct_dev = zeros(nλ)
     dev_ratio = convert(T, NaN)
+    niter = 0
 
     update!(cd, newcoef, r.y, r.wts)
 
@@ -752,7 +784,7 @@ function StatsBase.fit{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=fal
         curλ = λ[i]
 
         # Run coordinate descent
-        fit!(newcoef, cd, curλ, criterion)
+        niter += fit!(newcoef, cd, curλ, criterion)
 
         dev_ratio = cd.dev/nulldev
         pct_dev[i] = 1 - dev_ratio
@@ -772,6 +804,7 @@ function StatsBase.fit{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=fal
     path.pct_dev = pct_dev[1:i]
     path.coefs = coefs[:, 1:i]
     path.b0 = b0s[1:i]
+    path.niter = niter
     if !isempty(Xnorm)
         scale!(Xnorm, path.coefs)
     end
@@ -863,7 +896,6 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
             # Find max λ
             Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwts)
             λ = computeλ(Xy, λminratio, nλ)
-            @show nullb0
             nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
         else
             λ = convert(Vector{T}, λ)
