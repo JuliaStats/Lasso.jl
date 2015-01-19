@@ -25,12 +25,13 @@ calc{Dist,Naive}(::LassoOp{Dist,Naive}, X, y) = fit(LassoPath, X, y, Dist(), nai
 type LassoBenchmark{Op} <: Proc end
 Base.length(p::LassoBenchmark, n) = 0
 Base.isvalid(p::LassoBenchmark, n) = true
-Base.start(p::LassoBenchmark, n) = inputs[n]
+Base.start(p::LassoBenchmark, n) = (gc(); inputs[n])
 function Base.start{Naive}(p::LassoBenchmark{GLMNetOp{Binomial,Naive}}, n)
     X, y = inputs[n]
     yp = zeros(length(y), 2)
     yp[:, 1] = y .== 0
     yp[:, 2] = y .== 1
+    gc()
     (X, yp)
 end
 Base.run{Op}(p::LassoBenchmark{Op}, n, s) =
@@ -46,7 +47,7 @@ cfgs = vec([begin
                 inputs[x] = makeXY(ρ, N, p)
                 x
             end for ρ in [0, 0.1, 0.2, 0.5, 0.9, 0.95],
-               (N, p) in [(1000, 100), (5000, 100), (100, 1000), (100, 5000), #=(100, 20000)=#]])
+               (N, p) in [(1000, 100), (5000, 100), (100, 200), (100, 500), (100, 1000), (100, 5000), #=(100, 20000)=#]])
 rtable = run(Proc[LassoBenchmark{GLMNetOp{Normal,true}}(), LassoBenchmark{LassoOp{Normal,true}}(),
                   LassoBenchmark{GLMNetOp{Normal,false}}(), LassoBenchmark{LassoOp{Normal,false}}()], cfgs)
 show(rtable; unit=:sec)

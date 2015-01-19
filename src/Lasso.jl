@@ -849,7 +849,9 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
                                                      α::Number=one(eltype(y)), nλ::Int=100,
                                                      λminratio::Number=ifelse(size(X, 1) < size(X, 2), 0.01, 1e-4),
                                                      λ::Union(Vector,Nothing)=nothing, standardize::Bool=true,
-                                                     intercept::Bool=true, naivealgorithm::Bool=true, dofit::Bool=true,
+                                                     intercept::Bool=true,
+                                                     naivealgorithm::Bool=(!isa(d, Normal) || !isa(l, IdentityLink) || size(X, 2) > 5*size(X, 1)),
+                                                     dofit::Bool=true,
                                                      irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
                                                      maxncoef::Int=min(size(X, 2), 2*size(X, 1)), fitargs...)
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
