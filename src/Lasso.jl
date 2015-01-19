@@ -690,14 +690,16 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
             elseif criterion == :coef
                 maxdelta = zero(T)
                 Xssq = cd.Xssq
-                converged = true
-                for icoef = 1:nnz(newcoef)
-                    oldcoefval = icoef > nnz(oldcoef) ? zero(T) : oldcoef.coef[icoef]
-                    ipred = newcoef.coef2predictor[icoef]
-                    # println("3 ipred = ", ipred, " diff = ", oldcoefval - newcoef.coef[icoef], " sq = ", Xssq[ipred])
-                    if abs2(oldcoefval - newcoef.coef[icoef])*Xssq[ipred] > irls_tol
-                        converged = false
-                        break
+                converged = abs2(oldb0 - b0)*cd.weightsum < irls_tol
+                if converged
+                    for icoef = 1:nnz(newcoef)
+                        oldcoefval = icoef > nnz(oldcoef) ? zero(T) : oldcoef.coef[icoef]
+                        ipred = newcoef.coef2predictor[icoef]
+                        # println("3 ipred = ", ipred, " diff = ", oldcoefval - newcoef.coef[icoef], " sq = ", Xssq[ipred])
+                        if abs2(oldcoefval - newcoef.coef[icoef])*Xssq[ipred] > irls_tol
+                            converged = false
+                            break
+                        end
                     end
                 end
             end
@@ -732,7 +734,7 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
 end
 
 # Fits linear models (just the outer loop)
-function StatsBase.fit{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=false, irls_maxiter::Int=30,
+function StatsBase.fit{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=false,
                                          cd_maxiter::Int=10000, cd_tol::Real=1e-7, irls_tol::Real=1e-7,
                                          criterion=:obj, minStepFac::Real=eps())
     irls_maxiter >= 1 || error("irls_maxiter must be positive")
