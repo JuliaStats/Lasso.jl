@@ -69,7 +69,7 @@ end
 function addcoef!{T}(x::SparseCoefficients{T}, ipred::Int)
     push!(x.coef, zero(T))
     push!(x.coef2predictor, ipred)
-    coefindex = length(x.coef2predictor)
+    coefindex = nnz(x)
     x.predictor2coef[ipred] = coefindex
 end
 
@@ -128,8 +128,8 @@ abstract CoordinateDescent{T,Intercept} <: LinPred
 type NaiveCoordinateDescent{T,Intercept,S<:CoefficientIterator} <: CoordinateDescent{T,Intercept}
     X::Matrix{T}                  # original design matrix
     μy::T                         # mean of y at current weights
-    μX::Vector{T}                 # mean of X at current weights
-    Xssq::Vector{T}               # weighted sum of squares of each column of X
+    μX::Vector{T}                 # mean of X at current weights (in coefficient order)
+    Xssq::Vector{T}               # weighted sum of squares of each column of X (in coefficient order)
     residuals::Vector{T}          # y - Xβ (unscaled with centered X)
     weights::Vector{T}            # weights for each observation
     oldy::Vector{T}               # old y vector (for updating residuals
@@ -149,7 +149,7 @@ type NaiveCoordinateDescent{T,Intercept,S<:CoefficientIterator} <: CoordinateDes
 end
 
 # Compute μX and Xssq for given predictor
-function computeμ!{T,Intercept}(cd::NaiveCoordinateDescent{T,Intercept}, icoef::Int, ipred::Int)
+function computeXssq!{T,Intercept}(cd::NaiveCoordinateDescent{T,Intercept}, icoef::Int, ipred::Int)
     @extractfields cd X Xssq weights
 
     μ = zero(T)
@@ -211,7 +211,7 @@ function update!{T,Intercept}(cd::NaiveCoordinateDescent{T,Intercept}, coef::Spa
     end
 
     for icoef = 1:nnz(coef)
-        computeμ!(cd, icoef, coef.coef2predictor[icoef])
+        computeXssq!(cd, icoef, coef.coef2predictor[icoef])
     end
     cd
 end
@@ -242,8 +242,8 @@ end
 end
 
 # Performs the cycle of all predictors
-function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, λ::T, α::T, all::Bool)
-    @extractfields cd residuals X weights Xssq coefitr
+function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, λ::T, all::Bool)
+    @extractfields cd residuals X weights Xssq α
 
     maxdelta = zero(T)
     @inbounds if all
@@ -264,11 +264,11 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
                 # Adding a new variable to the model
                 abs(v) < λ*α && continue
                 oldcoef = zero(T)
-                length(coef.coef) > cd.maxncoef &&
+                nnz(coef) > cd.maxncoef &&
                     error("maximum number of coefficients $(cd.maxncoef) exceeded at λ = $λ")
                 icoef = addcoef!(coef, ipred)
                 cd.coefitr = addcoef(cd.coefitr, icoef)
-                computeμ!(cd, icoef, ipred)
+                computeXssq!(cd, icoef, ipred)
             end
             newcoef = S(v, λ*α)/(Xssq[icoef] + λ*(1 - α))
 
@@ -308,7 +308,7 @@ intercept{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T,false}) = zero
 function intercept{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T,true})
     μX = cd.μX
     v = cd.μy
-    for i = 1:length(coef.coef)
+    for i = 1:nnz(coef)
         v -= μX[i]*coef.coef[i]
     end
     v
@@ -407,6 +407,7 @@ function update!{T,Intercept}(cd::CovarianceCoordinateDescent{T,Intercept},
     @simd for i = 1:length(y)
         @inbounds yty += abs2(y[i] - μy)*weights[i]
     end
+    cd.yty = yty
 
     for j = 1:size(X, 2)
         μ = zero(T)
@@ -433,7 +434,6 @@ function update!{T,Intercept}(cd::CovarianceCoordinateDescent{T,Intercept},
     for icoef = 1:nnz(coef)
         computeXtX!(cd, coef, icoef, coef.coef2predictor[icoef])
     end
-    cd.yty = yty
 
     cd
 end
@@ -447,8 +447,8 @@ function compute_gradient(XtX, coef, ipred)
 end
 
 # Performs the cycle of all predictors
-function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{T}, λ::T, α::T, all::Bool)
-    @extractfields cd X Xty XtX Xssq
+function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{T}, λ::T, all::Bool)
+    @extractfields cd X Xty XtX Xssq α
 
     maxdelta = zero(T)
     if all
@@ -468,7 +468,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
             if oldcoef != newcoef
                 if icoef == 0
                     # Adding a new variable to the model
-                    length(coef.coef) > cd.maxncoef &&
+                    nnz(coef) > cd.maxncoef &&
                         error("maximum number of coefficients $(cd.maxncoef) exceeded at λ = $λ")
                     icoef = addcoef!(coef, ipred)
                     cd.coefitr = addcoef(cd.coefitr, icoef)
@@ -523,7 +523,6 @@ function linpred!{T}(mu::Vector{T}, cd::CovarianceCoordinateDescent{T},
 end
 
 function fit!{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T}, λ, criterion)
-    α = cd.α
     maxiter = cd.maxiter
     tol = cd.tol
     n = size(cd.X, 1)
@@ -538,10 +537,9 @@ function fit!{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T}, λ, crit
     iter = 0
     for iter = 1:maxiter
         oldb0 = b0
-        maxdelta = cycle!(coef, cd, λ, α, converged)
+        maxdelta = cycle!(coef, cd, λ, converged)
         b0 = intercept(coef, cd)
         maxdelta = max(maxdelta, abs2(oldb0 - b0)*cd.weightsum)
-        # println("b0diff = ", oldb0 - b0, " weightsum = ", cd.weightsum)
 
         # Test for convergence
         prev_converged = converged
@@ -587,7 +585,14 @@ end
 function Base.show(io::IO, path::LassoPath)
     prefix = isa(path.m, GeneralizedLinearModel) ? string(typeof(path.m.rr.d).name.name, " ") : "" 
     println(io, prefix*"Lasso Solution Path ($(size(path.coefs, 2)) solutions for $(size(path.coefs, 1)) predictors in $(path.niter) iterations):")
-    Base.showarray(io, [path.λ path.pct_dev sum(path.coefs .!= 0, 1)']; header=false)
+
+    coefs = path.coefs
+    ncoefs = zeros(Int, size(coefs, 2))
+    for i = 1:size(coefs, 2)-1
+        ncoefs[i] = coefs.colptr[i+1] - coefs.colptr[i]
+    end
+    ncoefs[end] = nnz(coefs) - coefs.colptr[size(coefs, 2)] + 1
+    Base.showarray(io, [path.λ path.pct_dev ncoefs]; header=false)
 end
 
 ## FITTING (INCLUDING IRLS)
@@ -599,17 +604,22 @@ function addcoefs!(coefs::SparseMatrixCSC, newcoef::SparseCoefficients, i::Int)
     n = nnz(coefs)
     nzval = coefs.nzval
     rowval = coefs.rowval
-    resize!(nzval, n+length(newcoef.coef))
-    resize!(rowval, n+length(newcoef.coef))
+    resize!(nzval, n+nnz(newcoef))
+    resize!(rowval, n+nnz(newcoef))
     @inbounds for ipred = 1:length(newcoef.predictor2coef)
         icoef = newcoef.predictor2coef[ipred]
         if icoef != 0
-            n += 1
-            nzval[n] = newcoef.coef[icoef]
-            rowval[n] = ipred
+            cval = newcoef.coef[icoef]
+            if cval != 0
+                n += 1
+                nzval[n] = cval
+                rowval[n] = ipred
+            end
         end
     end
-    coefs.colptr[i+1:end] = length(coefs.nzval)+1
+    resize!(nzval, n)
+    resize!(rowval, n)
+    coefs.colptr[i+1:end] = n+1
 end
 
 function wrkresp!(out, x, y, offset)
