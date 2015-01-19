@@ -118,7 +118,6 @@ end
 abstract CoordinateDescent{T} <: LinPred
 type NaiveCoordinateDescent{T,S<:CoefficientIterator} <: CoordinateDescent{T}
     X::Matrix{T}                  # original design matrix
-    Xdw::Matrix{T}                # X, decentered and weighted
     μy::T                         # mean of y at current weights
     μX::Vector{T}                 # mean of X at current weights
     Xssq::Vector{T}               # weighted sum of squares of each column of X
@@ -133,19 +132,9 @@ type NaiveCoordinateDescent{T,S<:CoefficientIterator} <: CoordinateDescent{T}
     tol::T                        # tolerance
 
     NaiveCoordinateDescent{T,S}(X::Matrix{T}, intercept::Bool, α::T, maxiter::Int, tol::T, coefitr::S)  =
-        new(X, Array(T, size(X)), zero(T), zeros(T, size(X, 2)), Array(T, size(X, 2)),
+        new(X, zero(T), zeros(T, size(X, 2)), Array(T, size(X, 2)),
             Array(T, size(X, 1)), Array(T, size(X, 1)), convert(T, NaN), coefitr,
             convert(T, NaN), intercept, α, maxiter, tol)
-end
-
-function compute_ws_Xdw!(Xdw, X, weights, μ, j)
-    ws = zero(eltype(Xdw))
-    @inbounds @simd for i = 1:size(X, 1)
-        xmu = X[i, j] - μ
-        xmuw = Xdw[i, j] = xmu*weights[i]
-        ws += xmu*xmuw
-    end
-    ws
 end
 
 # Updates CoordinateDescent object with (possibly) new y vector and
@@ -154,7 +143,6 @@ function update!{T}(cd::NaiveCoordinateDescent{T}, coef::SparseCoefficients{T}, 
     residuals = cd.residuals
     X = cd.X
     Xssq = cd.Xssq
-    Xdw = cd.Xdw
     weights = copy!(cd.weights, wt)
     weightsum = cd.weightsum = sum(weights)
     weightsuminv = inv(weightsum)
@@ -176,7 +164,11 @@ function update!{T}(cd::NaiveCoordinateDescent{T}, coef::SparseCoefficients{T}, 
             μX[j] = μ
 
             # Update Xssq
-            Xssq[j] = compute_ws_Xdw!(Xdw, X, weights, μ, j)
+            ws = zero(T)
+            @simd for i = 1:size(X, 1)
+                ws += abs2(X[i, j] - μ)*weights[i]
+            end
+            Xssq[j] = ws
         end
 
         # Compute μy and μres
@@ -198,8 +190,7 @@ function update!{T}(cd::NaiveCoordinateDescent{T}, coef::SparseCoefficients{T}, 
         @inbounds for j = 1:size(X, 2)
             ws = zero(T)
             @simd for i = 1:size(X, 1)
-                x = Xdw[i, j] = X[i, j]*weights[i]
-                ws += X[i, j]*x
+                ws += abs2(X[i, j])*weights[i]
             end
             Xssq[j] = ws
         end
@@ -212,10 +203,10 @@ function update!{T}(cd::NaiveCoordinateDescent{T}, coef::SparseCoefficients{T}, 
     cd
 end
 
-@inline function compute_newcoef(Xdw, residuals, sq, oldcoef, ipred, λ, α)
+@inline function compute_newcoef(X, weights, residuals, sq, oldcoef, ipred, λ, α)
     v = sq*oldcoef
-    @simd for i = 1:size(Xdw, 1)
-        @inbounds v += Xdw[i, ipred]*residuals[i]
+    @simd for i = 1:size(X, 1)
+        @inbounds v += X[i, ipred]*residuals[i]*weights[i]
     end
     S(v, λ*α)/(sq + λ*(1 - α))
     # println("s $ipred => $v, den = $((sq + λ*(1 - α)))")
@@ -231,7 +222,6 @@ end
 # Performs the cycle of all predictors
 function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, λ::T, α::T, all::Bool)
     X = cd.X
-    Xdw = cd.Xdw
     residuals = cd.residuals
     weights = cd.weights
     Xssq = cd.Xssq
@@ -244,7 +234,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
         for ipred = 1:size(X, 2)
             icoef = coef.predictor2coef[ipred]
             oldcoef = icoef == 0 ? zero(T) : coef.coef[icoef]
-            newcoef = compute_newcoef(Xdw, residuals, Xssq[ipred], oldcoef, ipred, λ, α)
+            newcoef = compute_newcoef(X, weights, residuals, Xssq[ipred], oldcoef, ipred, λ, α)
 
             if oldcoef != newcoef
                 if icoef == 0
@@ -264,7 +254,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
             ipred = coef.coef2predictor[icoef]
 
             v = Xssq[ipred]*oldcoef
-            newcoef = compute_newcoef(Xdw, residuals, Xssq[ipred], oldcoef, ipred, λ, α)
+            newcoef = compute_newcoef(X, weights, residuals, Xssq[ipred], oldcoef, ipred, λ, α)
 
             if oldcoef != newcoef
                 coef.coef[icoef] = newcoef
@@ -325,13 +315,11 @@ function computeXtX!{T}(cd::CovarianceCoordinateDescent{T}, coef::SparseCoeffici
     XtX = cd.XtX
     μX = cd.μX
 
+    μ = μX[ipred]
     @simd for i = 1:size(cd.X, 1)
-        @inbounds tmp[i] = X[i, ipred]*weights[i]
+        @inbounds tmp[i] = (X[i, ipred] - μ)*weights[i]
     end
 
-    # Why is BLAS slower at this?
-    # At_mul_B!(slice(XtX, icoef, :), cd.X, tmp)
-    μw = μX[ipred]*cd.weightsum
     @inbounds for jpred = 1:size(X, 2)
         if jpred == ipred
             XtX[icoef, jpred] = cd.Xssq[jpred]
@@ -341,10 +329,11 @@ function computeXtX!{T}(cd::CovarianceCoordinateDescent{T}, coef::SparseCoeffici
                 XtX[icoef, jpred] = XtX[jcoef, ipred]
             else
                 s = zero(T)
+                μ = μX[jpred]
                 @simd for i = 1:size(X, 1)
-                    s += tmp[i]*X[i, jpred]
+                    s += tmp[i]*(X[i, jpred] - μ)
                 end
-                XtX[icoef, jpred] = s-μX[jpred]*μw
+                XtX[icoef, jpred] = s
             end
         end
     end
