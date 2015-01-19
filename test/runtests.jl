@@ -72,8 +72,8 @@ for (dist, link) in ((Normal(), IdentityLink()), (Binomial(), LogitLink()), (Poi
                                                 # rd = (l.b0 - g.a0)./g.a0
                                                 # rd[!isfinite(rd)] = 0
                                                 # println("         b0    adiff = $(maxabs(l.b0 - g.a0)) rdiff = $(maxabs(rd))")
-                                                @fact l.coefs => roughly(gbeta, 1e-7)
-                                                @fact l.b0 => roughly(g.a0, 1e-7)
+                                                @fact l.coefs => roughly(gbeta, 2e-7)
+                                                @fact l.b0 => roughly(g.a0, 2e-7)
                                             end
                                         end
                                     end
