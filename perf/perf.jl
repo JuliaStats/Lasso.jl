@@ -15,22 +15,30 @@ function makeXY(ρ, nsamples, nfeatures)
     (X, y)
 end
 
-type GLMNetOp{Naive} end
-calc{Naive}(::GLMNetOp{Naive}, X, y) = glmnet(X, y, naivealgorithm=Naive)
+type GLMNetOp{Dist,Naive} end
+calc{Dist,Naive}(::GLMNetOp{Dist,Naive}, X, y) = glmnet(X, y, Dist(), naivealgorithm=Naive)
+calc(::GLMNetOp{Binomial}, X, y) = glmnet(X, y, Binomial())
 
-type LassoOp{Naive} end
-calc{Naive}(::LassoOp{Naive}, X, y) = fit(LassoPath, X, y, naivealgorithm=Naive, criterion=:coef)
+type LassoOp{Dist,Naive} end
+calc{Dist,Naive}(::LassoOp{Dist,Naive}, X, y) = fit(LassoPath, X, y, Dist(), naivealgorithm=Naive, criterion=:coef)
 
 type LassoBenchmark{Op} <: Proc end
 Base.length(p::LassoBenchmark, n) = 0
 Base.isvalid(p::LassoBenchmark, n) = true
 Base.start(p::LassoBenchmark, n) = inputs[n]
+function Base.start{Naive}(p::LassoBenchmark{GLMNetOp{Binomial,Naive}}, n)
+    X, y = inputs[n]
+    yp = zeros(length(y), 2)
+    yp[:, 1] = y .== 0
+    yp[:, 2] = y .== 1
+    (X, yp)
+end
 Base.run{Op}(p::LassoBenchmark{Op}, n, s) =
     calc(Op(), s[1], s[2])
 Base.done(p::LassoBenchmark, n, s) = true
 
-Base.string{Naive}(p::LassoBenchmark{GLMNetOp{Naive}}) = "glmnet $(Naive ? "naive" : "cov")"
-Base.string{Naive}(p::LassoBenchmark{LassoOp{Naive}}) = "Lasso.jl $(Naive ? "naive" : "cov")"
+Base.string{Dist,Naive}(p::LassoBenchmark{GLMNetOp{Dist,Naive}}) = "glmnet $(Dist.name.name) $(Naive ? "naive" : "cov")"
+Base.string{Dist,Naive}(p::LassoBenchmark{LassoOp{Dist,Naive}}) = "Lasso.jl $(Dist.name.name) $(Naive ? "naive" : "cov")"
 
 inputs = Dict{(Float64, Int, Int),(Matrix{Float64},Vector{Float64})}()
 cfgs = vec([begin
@@ -39,7 +47,14 @@ cfgs = vec([begin
                 x
             end for ρ in [0, 0.1, 0.2, 0.5, 0.9, 0.95],
                (N, p) in [(1000, 100), (5000, 100), (100, 1000), (100, 5000), #=(100, 20000)=#]])
-rtable = run(Proc[LassoBenchmark{GLMNetOp{true}}(), LassoBenchmark{LassoOp{true}}(),
-                  LassoBenchmark{GLMNetOp{false}}(), LassoBenchmark{LassoOp{false}}()], cfgs)
+rtable = run(Proc[LassoBenchmark{GLMNetOp{Normal,true}}(), LassoBenchmark{LassoOp{Normal,true}}(),
+                  LassoBenchmark{GLMNetOp{Normal,false}}(), LassoBenchmark{LassoOp{Normal,false}}()], cfgs)
+show(rtable; unit=:sec)
+
+for (key, value) in inputs
+    (X, y) = inputs[key]
+    inputs[key] = (X, float64(rand(length(y)) .< 1./(1+exp(-y))))
+end
+rtable = run(Proc[LassoBenchmark{GLMNetOp{Binomial,true}}(), LassoBenchmark{LassoOp{Binomial,true}}()], cfgs)
 show(rtable; unit=:sec)
 end

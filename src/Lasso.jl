@@ -657,7 +657,7 @@ end
 # Fits GLMs (outer and middle loops)
 function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbose::Bool=false, irls_maxiter::Int=30,
                                                     cd_maxiter::Int=100000, cd_tol::Real=1e-7, irls_tol::Real=1e-7,
-                                                    criterion=:obj, minStepFac::Real=eps())
+                                                    criterion=:coef, minStepFac::Real=eps())
     irls_maxiter >= 1 || error("irls_maxiter must be positive")
     0 < minStepFac < 1 || error("minStepFac must be in (0, 1)")
     criterion == :obj || criterion == :coef || error("criterion must be obj or coef")
@@ -803,7 +803,7 @@ end
 # Fits linear models (just the outer loop)
 function StatsBase.fit{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=false,
                                          cd_maxiter::Int=10000, cd_tol::Real=1e-7, irls_tol::Real=1e-7,
-                                         criterion=:obj, minStepFac::Real=eps())
+                                         criterion=:coef, minStepFac::Real=eps())
     0 < minStepFac < 1 || error("minStepFac must be in (0, 1)")
     criterion == :obj || criterion == :coef || error("criterion must be obj or coef")
 
