@@ -156,7 +156,7 @@ function computeμ!{T,Intercept}(cd::NaiveCoordinateDescent{T,Intercept}, icoef:
     if Intercept
         # Update μX
         @simd for i = 1:size(X, 1)
-            μ += X[i, ipred]*weights[i]
+            @inbounds μ += X[i, ipred]*weights[i]
         end
         μ /= cd.weightsum
         cd.μX[icoef] = μ
@@ -165,7 +165,7 @@ function computeμ!{T,Intercept}(cd::NaiveCoordinateDescent{T,Intercept}, icoef:
     # Update Xssq
     ws = zero(T)
     @simd for i = 1:size(X, 1)
-        ws += abs2(X[i, ipred] - μ)*weights[i]
+        @inbounds ws += abs2(X[i, ipred] - μ)*weights[i]
     end
     Xssq[icoef] = ws
 
