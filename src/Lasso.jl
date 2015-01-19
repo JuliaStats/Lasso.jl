@@ -221,6 +221,13 @@ function update!{T}(cd::NaiveCoordinateDescent{T}, coef::SparseCoefficients{T}, 
     cd
 end
 
+if VERSION < v"0.4.0-dev+707"
+    # no-op inline macro for old Julia
+    macro inline(x)
+        esc(x)
+    end
+end
+
 @inline function update_residuals!(X, residuals, μ, coefdiff, ipred)
     @simd for i = 1:size(X, 1)
         @inbounds residuals[i] += coefdiff*(X[i, ipred] - μ)
@@ -252,6 +259,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
                 oldcoef = coef.coef[icoef]
                 v += Xssq[icoef]*oldcoef
             else
+                # Adding a new variable to the model
                 abs(v) < λ*α && continue
                 oldcoef = zero(T)
                 length(coef.coef) > cd.maxncoef &&
@@ -471,6 +479,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
             newcoef = S(s, λ*α)/(Xssq[ipred] + λ*(1 - α))
             if oldcoef != newcoef
                 if icoef == 0
+                    # Adding a new variable to the model
                     length(coef.coef) > cd.maxncoef &&
                         error("maximum number of coefficients $(cd.maxncoef) exceeded at λ = $λ")
                     icoef = addcoef!(coef, ipred)
@@ -539,7 +548,6 @@ function fit!{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T}, λ, crit
             dev = ssr(coef, cd)
             obj = dev/2 + λ*P(α, coef)
             converged = objold - obj < tol*obj
-            # @show obj (objold - obj)/obj
         elseif criterion == :coef
             converged = maxdelta < tol
         end
@@ -549,13 +557,15 @@ function fit!{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T}, λ, crit
         prev_converged && converged && break
     end
 
-    (!prev_converged || !converged) && error("coordinate descent failed to converge in $maxiter iterations at λ = $λ")
+    (!prev_converged || !converged) &&
+        error("coordinate descent failed to converge in $maxiter iterations at λ = $λ")
 
     cd.dev = criterion == :coef ? ssr(coef, cd) : dev
     iter
 end
 
-intercept{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{T}) = cd.intercept ? cd.μy - dot(cd.μX, coef) : zero(T)
+intercept{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{T}) =
+    cd.intercept ? cd.μy - dot(cd.μX, coef) : zero(T)
 function intercept{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T})
     !cd.intercept && return zero(T)
     μX = cd.μX
@@ -566,7 +576,7 @@ function intercept{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}
     v
 end
 
-function linpred!{T}(mu::Vector{T}, cd::NaiveCoordinateDescent{T}, coef::SparseCoefficients{T}, b0::T)
+function linpred!{T}(mu::Vector{T}, cd::NaiveCoordinateDescent{T}, coef::SparseCoefficients{T}, offset, b0::T)
     oldy = cd.oldy
     residuals = cd.residuals
     @simd for i = 1:length(mu)
@@ -575,7 +585,7 @@ function linpred!{T}(mu::Vector{T}, cd::NaiveCoordinateDescent{T}, coef::SparseC
     mu
 end
 
-function linpred!{T}(mu::Vector{T}, cd::CovarianceCoordinateDescent{T}, coef::SparseCoefficients{T}, b0::T)
+function linpred!{T}(mu::Vector{T}, cd::CovarianceCoordinateDescent{T}, coef::SparseCoefficients{T}, offset, b0::T)
     A_mul_B!(mu, cd.X, coef)
     if b0 != 0
         @simd for i = 1:length(mu)
@@ -631,9 +641,15 @@ function addcoefs!(coefs::SparseMatrixCSC, newcoef::SparseCoefficients, i::Int)
     coefs.colptr[i+1:end] = length(coefs.nzval)+1
 end
 
-function add!(out, x, y)
-    @simd for i = 1:length(out)
-        @inbounds out[i] = x[i] + y[i]
+function wrkresp!(out, x, y, offset)
+    if isempty(offset)
+        @simd for i = 1:length(out)
+            @inbounds out[i] = x[i] + y[i]
+        end
+    else
+        @simd for i = 1:length(out)
+            @inbounds out[i] = x[i] + y[i] - offset[i]
+        end
     end
     out
 end
@@ -673,6 +689,7 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
     dev = convert(T, NaN)
     b0 = zero(T)
     scratchmu = Array(T, size(X, 1))
+    offset = r.offset
     eta = r.eta
     wrkresid = r.wrkresid
     objold = convert(T, Inf)
@@ -688,85 +705,89 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
 
     dev = NaN
     niter = 0
-    while true # outer loop
-        obj = convert(T, Inf)
-        last_dev_ratio = dev_ratio
-        curλ = λ[i]
-        # println()
-        # println("λ = $curλ")
+    if nλ == 0
+        i = 0
+    else
+        while true # outer loop
+            obj = convert(T, Inf)
+            last_dev_ratio = dev_ratio
+            curλ = λ[i]
+            # println()
+            # println("λ = $curλ")
 
-        converged = false
+            converged = false
 
-        for iirls=1:irls_maxiter # middle loop
-            copy!(oldcoef, newcoef)
-            oldb0 = b0
+            for iirls=1:irls_maxiter # middle loop
+                copy!(oldcoef, newcoef)
+                oldb0 = b0
 
-            # Compute working response
-            add!(scratchmu, eta, wrkresid)
-            wrkwt = wrkwt!(r)
+                # Compute working response
+                wrkresp!(scratchmu, eta, wrkresid, offset)
+                wrkwt = wrkwt!(r)
 
-            # Run coordinate descent inner loop
-            niter += fit!(newcoef, update!(cd, newcoef, scratchmu, wrkwt), curλ, criterion)
-            b0 = intercept(newcoef, cd)
+                # Run coordinate descent inner loop
+                niter += fit!(newcoef, update!(cd, newcoef, scratchmu, wrkwt), curλ, criterion)
+                b0 = intercept(newcoef, cd)
 
-            # Update GLM and get deviance
-            dev = updatemu!(r, linpred!(scratchmu, cd, newcoef, b0))
+                # Update GLM and get deviance
+                dev = updatemu!(r, linpred!(scratchmu, cd, newcoef, offset, b0))
 
-            # Compute Elastic Net objective
-            objold = obj
-            obj = dev/2 + curλ*P(α, newcoef)
+                # Compute Elastic Net objective
+                objold = obj
+                obj = dev/2 + curλ*P(α, newcoef)
 
-            if obj > objold + length(scratchmu)*eps(objold)
-                f = 1.0
-                b0diff = b0 - oldb0
-                while obj > objold
-                    f /= 2.; f > minStepFac || error("step-halving failed at beta = $(newcoef)")
-                    for icoef = 1:nnz(newcoef)
-                        oldcoefval = icoef > nnz(oldcoef) ? zero(T) : oldcoef.coef[icoef]
-                        newcoef.coef[icoef] = oldcoefval+f*(newcoef.coef[icoef] - oldcoefval)
+                if obj > objold + length(scratchmu)*eps(objold)
+                    f = 1.0
+                    b0diff = b0 - oldb0
+                    while obj > objold
+                        f /= 2.; f > minStepFac || error("step-halving failed at beta = $(newcoef)")
+                        for icoef = 1:nnz(newcoef)
+                            oldcoefval = icoef > nnz(oldcoef) ? zero(T) : oldcoef.coef[icoef]
+                            newcoef.coef[icoef] = oldcoefval+f*(newcoef.coef[icoef] - oldcoefval)
+                        end
+                        b0 = oldb0+f*b0diff
+                        dev = updatemu!(r, linpred!(scratchmu, cd, newcoef, offset, b0))
+                        obj = dev/2 + curλ*P(α, newcoef)
                     end
-                    b0 = oldb0+f*b0diff
-                    dev = updatemu!(r, linpred!(scratchmu, cd, newcoef, b0))
-                    obj = dev/2 + curλ*P(α, newcoef)
                 end
-            end
 
-            # Determine if we have converged
-            if criterion == :obj
-                converged = objold - obj < irls_tol*obj
-            elseif criterion == :coef
-                maxdelta = zero(T)
-                Xssq = cd.Xssq
-                converged = abs2(oldb0 - b0)*cd.weightsum < irls_tol
-                if converged
-                    for icoef = 1:nnz(newcoef)
-                        oldcoefval = icoef > nnz(oldcoef) ? zero(T) : oldcoef.coef[icoef]
-                        j = isa(cd, NaiveCoordinateDescent) ? icoef : newcoef.coef2predictor[icoef]
-                        if abs2(oldcoefval - newcoef.coef[icoef])*Xssq[j] > irls_tol
-                            converged = false
-                            break
+                # Determine if we have converged
+                if criterion == :obj
+                    converged = objold - obj < irls_tol*obj
+                elseif criterion == :coef
+                    maxdelta = zero(T)
+                    Xssq = cd.Xssq
+                    converged = abs2(oldb0 - b0)*cd.weightsum < irls_tol
+                    if converged
+                        for icoef = 1:nnz(newcoef)
+                            oldcoefval = icoef > nnz(oldcoef) ? zero(T) : oldcoef.coef[icoef]
+                            j = isa(cd, NaiveCoordinateDescent) ? icoef : newcoef.coef2predictor[icoef]
+                            if abs2(oldcoefval - newcoef.coef[icoef])*Xssq[j] > irls_tol
+                                converged = false
+                                break
+                            end
                         end
                     end
                 end
+
+                converged && break
+            end
+            converged || error("IRLS failed to converge in $irls_maxiter iterations at λ = $(curλ)")
+
+            dev_ratio = dev/nulldev
+
+            pct_dev[i] = 1 - dev_ratio
+            addcoefs!(coefs, newcoef, i)
+            b0s[i] = b0
+
+            # Test whether we should continue
+            if i == nλ || (autoλ && last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
+                           pct_dev[i] > MAX_DEV_FRAC)
+                break
             end
 
-            converged && break
+            i += 1
         end
-        converged || error("IRLS failed to converge in $irls_maxiter iterations at λ = $(curλ)")
-
-        dev_ratio = dev/nulldev
-
-        pct_dev[i] = 1 - dev_ratio
-        addcoefs!(coefs, newcoef, i)
-        b0s[i] = b0
-
-        # Test whether we should continue
-        if i == nλ || (autoλ && last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
-                       pct_dev[i] > MAX_DEV_FRAC)
-            break
-        end
-
-        i += 1
     end
 
     path.λ = path.λ[1:i]
@@ -805,7 +826,7 @@ function StatsBase.fit{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=fal
     dev_ratio = convert(T, NaN)
     niter = 0
 
-    update!(cd, newcoef, r.y, r.wts)
+    update!(cd, newcoef, r.mu, r.wts)
 
     if autoλ
         # No need to fit the first model
@@ -848,12 +869,13 @@ end
 
 ## MODEL CONSTRUCTION
 
-function computeλ(Xy, λminratio, nλ)
+function computeλ(Xy, λminratio, α, nλ)
     λmax = abs(Xy[1])
     for i = 1:length(Xy)
         x = abs(Xy[i])
         λmax = ifelse(x > λmax, x, λmax)
     end
+    λmax /= α
     logλmax = log(λmax)
     λ = exp(linspace(logλmax, logλmax + log(λminratio), nλ))
 end
@@ -894,45 +916,46 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
     # GLM response initialization
     autoλ = λ == nothing
     wts = eltype(wts) == T ? scale(wts, 1/sum(wts)) : scale!(convert(typeof(y), wts), 1/n)
-    off = eltype(offset) == T ? copy(offset) : convert(Vector{T}, offset)
+    off = eltype(offset) == T ? offset : convert(Vector{T}, offset)
 
     if isa(d, Normal) && isa(l, IdentityLink)
         # Special no-IRLS case
-
-        nullb0 = intercept ? mean(y, weights(wts)) : zero(T)
+        mu = isempty(offset) ? y : y + off
+        nullb0 = intercept ? mean(mu, weights(wts)) : zero(T)
         nulldev = 0.0
-        @simd for i = 1:length(y)
-            @inbounds nulldev += abs2(y[i] - nullb0)*wts[i]
+        @simd for i = 1:length(mu)
+            @inbounds nulldev += abs2(mu[i] - nullb0)*wts[i]
         end
 
         if autoλ
             # Find max λ
             if intercept
-                yscratch = Array(T, length(y))
-                @simd for i = 1:length(y)
-                    @inbounds yscratch[i] = (y[i] - nullb0)*wts[i]
+                muscratch = Array(T, length(mu))
+                @simd for i = 1:length(mu)
+                    @inbounds muscratch[i] = (mu[i] - nullb0)*wts[i]
                 end
             else
-                yscratch = y.*wts
+                muscratch = mu.*wts
             end
-            Xy = X'yscratch
-            λ = computeλ(Xy, λminratio, nλ)
+            Xy = X'muscratch
+            λ = computeλ(Xy, λminratio, α, nλ)
         else
             λ = convert(Vector{T}, λ)
         end
 
         # First y is just a placeholder here
-        model = LinearModel(LmResp{typeof(y)}(y, off, wts, y), cd)
+        model = LinearModel(LmResp{typeof(y)}(mu, off, wts, y), cd)
     else
         # Fit to find null deviance
         # Maybe we should use this GlmResp object?
-        nullmodel = fit(GeneralizedLinearModel, ones(T, n, ifelse(intercept, 1, 0)), y, d, l; wts=wts, offset=offset, convTol=irls_tol)
+        nullmodel = fit(GeneralizedLinearModel, ones(T, n, ifelse(intercept, 1, 0)), y, d, l;
+                        wts=wts, offset=offset, convTol=irls_tol)
         nulldev = deviance(nullmodel)
 
         if autoλ
             # Find max λ
             Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwts)
-            λ = computeλ(Xy, λminratio, nλ)
+            λ = computeλ(Xy, λminratio, α, nλ)
             nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
         else
             λ = convert(Vector{T}, λ)
@@ -942,7 +965,9 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
         mu = mustart(d, y, wts)
         eta = linkfun!(l, similar(mu), mu)
         if !isempty(off)
-            subtract!(eta, off)
+            @simd for i = 1:length(eta)
+                @inbounds eta[i] -= off[i]
+            end
         end
 
         if length(GlmResp.parameters) == 3
