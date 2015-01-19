@@ -20,8 +20,9 @@ function Base.A_mul_B!{T}(out::Vector, X::Matrix, coef::SparseCoefficients{T})
     fill!(out, zero(eltype(out)))
     @inbounds for icoef = 1:nnz(coef)
         ipred = coef.coef2predictor[icoef]
+        c = coef.coef[icoef]
         @simd for i = 1:size(X, 1)
-            out[i] += coef.coef[icoef]*X[i, ipred]
+            out[i] += c*X[i, ipred]
         end
     end
     out
@@ -123,6 +124,8 @@ type NaiveCoordinateDescent{T,S<:CoefficientIterator} <: CoordinateDescent{T}
     Xssq::Vector{T}               # weighted sum of squares of each column of X
     residuals::Vector{T}          # y - Xβ (unscaled with centered X)
     weights::Vector{T}            # weights for each observation
+    oldy::Vector{T}               # old y vector (for updating residuals
+                                  # without matrix multiplication)
     weightsum::T                  # sum(weights)
     coefitr::S                    # coefficient iterator
     dev::T                        # last deviance
@@ -133,9 +136,9 @@ type NaiveCoordinateDescent{T,S<:CoefficientIterator} <: CoordinateDescent{T}
     tol::T                        # tolerance
 
     NaiveCoordinateDescent{T,S}(X::Matrix{T}, intercept::Bool, α::T, maxncoef::Int, tol::T, coefitr::S)  =
-        new(X, zero(T), zeros(T, maxncoef), zeros(T, maxncoef),
-            Array(T, size(X, 1)), Array(T, size(X, 1)), convert(T, NaN), coefitr,
-            convert(T, NaN), intercept, α, typemax(Int), maxncoef, tol)
+        new(X, zero(T), zeros(T, maxncoef), zeros(T, maxncoef), Array(T, size(X, 1)), Array(T, size(X, 1)),
+            Array(T, size(X, 1)), convert(T, NaN), coefitr, convert(T, NaN), intercept, α, typemax(Int),
+            maxncoef, tol)
 end
 
 # Compute μX and Xssq for given predictor
@@ -177,10 +180,17 @@ function update!{T}(cd::NaiveCoordinateDescent{T}, coef::SparseCoefficients{T}, 
     weights = copy!(cd.weights, wt)
     weightsum = cd.weightsum = sum(weights)
     weightsuminv = inv(weightsum)
+    oldy = cd.oldy
 
-    A_mul_B!(residuals, X, coef)
-    @simd for i = 1:length(y)
-        @inbounds residuals[i] = y[i] - residuals[i]
+    # Update residuals without recomputing X*coef
+    if nnz(coef) == 0
+        copy!(residuals, y)
+        copy!(oldy, y)
+    else
+        @inbounds @simd for i = 1:length(y)
+            residuals[i] += y[i] - oldy[i]
+            oldy[i] = y[i]
+        end
     end
 
     if cd.intercept
@@ -556,8 +566,17 @@ function intercept{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}
     v
 end
 
-function linpred!{T}(mu::Vector{T}, X::Matrix{T}, coef::SparseCoefficients{T}, b0::T)
-    A_mul_B!(mu, X, coef)
+function linpred!{T}(mu::Vector{T}, cd::NaiveCoordinateDescent{T}, coef::SparseCoefficients{T}, b0::T)
+    oldy = cd.oldy
+    residuals = cd.residuals
+    @simd for i = 1:length(mu)
+        @inbounds mu[i] = oldy[i] - residuals[i]
+    end
+    mu
+end
+
+function linpred!{T}(mu::Vector{T}, cd::CovarianceCoordinateDescent{T}, coef::SparseCoefficients{T}, b0::T)
+    A_mul_B!(mu, cd.X, coef)
     if b0 != 0
         @simd for i = 1:length(mu)
             @inbounds mu[i] += b0
@@ -691,13 +710,13 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
             b0 = intercept(newcoef, cd)
 
             # Update GLM and get deviance
-            dev = updatemu!(r, linpred!(scratchmu, X, newcoef, b0))
+            dev = updatemu!(r, linpred!(scratchmu, cd, newcoef, b0))
 
             # Compute Elastic Net objective
             objold = obj
             obj = dev/2 + curλ*P(α, newcoef)
 
-            if obj > objold
+            if obj > objold + length(scratchmu)*eps(objold)
                 f = 1.0
                 b0diff = b0 - oldb0
                 while obj > objold
@@ -707,7 +726,7 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
                         newcoef.coef[icoef] = oldcoefval+f*(newcoef.coef[icoef] - oldcoefval)
                     end
                     b0 = oldb0+f*b0diff
-                    dev = updatemu!(r, linpred!(scratchmu, X, newcoef, b0))
+                    dev = updatemu!(r, linpred!(scratchmu, cd, newcoef, b0))
                     obj = dev/2 + curλ*P(α, newcoef)
                 end
             end
