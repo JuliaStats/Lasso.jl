@@ -105,7 +105,7 @@ typealias CoefficientIterator Union(UnitRange{Int}, RandomCoefficientIterator)
 addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
 
 ## COORDINATE DESCENT ROUTINES
-S(z, γ) = γ >= abs(z) ? zero(z) : ifelse(z > 0, z - γ, z + γ)
+S(z, γ) = abs(z) <= γ ? zero(z) : ifelse(z > 0, z - γ, z + γ)
 
 function P{T}(α::T, β::SparseCoefficients{T})
     x = zero(T)
@@ -129,12 +129,44 @@ type NaiveCoordinateDescent{T,S<:CoefficientIterator} <: CoordinateDescent{T}
     intercept::Bool               # whether an intercept should be fitted
     α::T                          # elastic net parameter
     maxiter::Int                  # maximum number of iterations
+    maxncoef::Int                 # maximum number of coefficients
     tol::T                        # tolerance
 
-    NaiveCoordinateDescent{T,S}(X::Matrix{T}, intercept::Bool, α::T, maxiter::Int, tol::T, coefitr::S)  =
-        new(X, zero(T), zeros(T, size(X, 2)), Array(T, size(X, 2)),
+    NaiveCoordinateDescent{T,S}(X::Matrix{T}, intercept::Bool, α::T, maxncoef::Int, tol::T, coefitr::S)  =
+        new(X, zero(T), zeros(T, maxncoef), zeros(T, maxncoef),
             Array(T, size(X, 1)), Array(T, size(X, 1)), convert(T, NaN), coefitr,
-            convert(T, NaN), intercept, α, maxiter, tol)
+            convert(T, NaN), intercept, α, typemax(Int), maxncoef, tol)
+end
+
+# Compute μX and Xssq for given predictor
+function computeμ!{T}(cd::NaiveCoordinateDescent{T}, icoef::Int, ipred::Int)
+    X = cd.X
+    Xssq = cd.Xssq
+    weights = cd.weights
+    @inbounds if cd.intercept
+        # Update μX
+        μX = cd.μX
+        μ = zero(T)
+        @simd for i = 1:size(X, 1)
+            μ += X[i, ipred]*weights[i]
+        end
+        μ /= cd.weightsum
+        μX[icoef] = μ
+
+        # Update Xssq
+        ws = zero(T)
+        @simd for i = 1:size(X, 1)
+            ws += abs2(X[i, ipred] - μ)*weights[i]
+        end
+        Xssq[icoef] = ws
+    else
+        ws = zero(T)
+        @simd for i = 1:size(X, 1)
+            ws += abs2(X[i, ipred])*weights[i]
+        end
+        Xssq[icoef] = ws
+    end
+    cd
 end
 
 # Updates CoordinateDescent object with (possibly) new y vector and
@@ -142,7 +174,6 @@ end
 function update!{T}(cd::NaiveCoordinateDescent{T}, coef::SparseCoefficients{T}, y::Vector{T}, wt::Vector{T})
     residuals = cd.residuals
     X = cd.X
-    Xssq = cd.Xssq
     weights = copy!(cd.weights, wt)
     weightsum = cd.weightsum = sum(weights)
     weightsuminv = inv(weightsum)
@@ -153,24 +184,6 @@ function update!{T}(cd::NaiveCoordinateDescent{T}, coef::SparseCoefficients{T}, 
     end
 
     if cd.intercept
-        μX = cd.μX
-        @inbounds for j = 1:size(X, 2)
-            # Update μX
-            μ = zero(T)
-            @simd for i = 1:size(X, 1)
-                μ += X[i, j]*weights[i]
-            end
-            μ *= weightsuminv
-            μX[j] = μ
-
-            # Update Xssq
-            ws = zero(T)
-            @simd for i = 1:size(X, 1)
-                ws += abs2(X[i, j] - μ)*weights[i]
-            end
-            Xssq[j] = ws
-        end
-
         # Compute μy and μres
         μy = zero(T)
         μres = zero(T)
@@ -187,30 +200,15 @@ function update!{T}(cd::NaiveCoordinateDescent{T}, coef::SparseCoefficients{T}, 
             @inbounds residuals[i] -= μres
         end
     else
-        @inbounds for j = 1:size(X, 2)
-            ws = zero(T)
-            @simd for i = 1:size(X, 1)
-                ws += abs2(X[i, j])*weights[i]
-            end
-            Xssq[j] = ws
-        end
-
         nulldev = zero(T)
         @simd for i = 1:length(y)
             nulldev += abs2(y[i])*weights[i]
         end
     end
-    cd
-end
-
-@inline function compute_newcoef(X, weights, residuals, sq, oldcoef, ipred, λ, α)
-    v = sq*oldcoef
-    @simd for i = 1:size(X, 1)
-        @inbounds v += X[i, ipred]*residuals[i]*weights[i]
+    for icoef = 1:nnz(coef)
+        computeμ!(cd, icoef, coef.coef2predictor[icoef])
     end
-    S(v, λ*α)/(sq + λ*(1 - α))
-    # println("s $ipred => $v, den = $((sq + λ*(1 - α)))")
-    # println("$ipred => $newcoef")
+    cd
 end
 
 @inline function update_residuals!(X, residuals, μ, coefdiff, ipred)
@@ -233,18 +231,32 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
         # Use all variables for first and last iterations
         for ipred = 1:size(X, 2)
             icoef = coef.predictor2coef[ipred]
-            oldcoef = icoef == 0 ? zero(T) : coef.coef[icoef]
-            newcoef = compute_newcoef(X, weights, residuals, Xssq[ipred], oldcoef, ipred, λ, α)
+
+            v = zero(T)
+            @simd for i = 1:size(X, 1)
+                @inbounds v += X[i, ipred]*residuals[i]*weights[i]
+            end
+
+            icoef = coef.predictor2coef[ipred]
+            if icoef != 0
+                oldcoef = coef.coef[icoef]
+                v += Xssq[icoef]*oldcoef
+            else
+                abs(v) < λ*α && continue
+                oldcoef = zero(T)
+                length(coef.coef) > cd.maxncoef &&
+                    error("maximum number of coefficients $(cd.maxncoef) exceeded at λ = $λ")
+                icoef = addcoef!(coef, ipred)
+                cd.coefitr = addcoef(cd.coefitr, icoef)
+                computeμ!(cd, icoef, ipred)
+            end
+            newcoef = S(v, λ*α)/(Xssq[icoef] + λ*(1 - α))
 
             if oldcoef != newcoef
-                if icoef == 0
-                    icoef = addcoef!(coef, ipred)
-                    cd.coefitr = addcoef(cd.coefitr, icoef)
-                end
                 coef.coef[icoef] = newcoef
-                update_residuals!(X, residuals, μX[ipred], oldcoef - newcoef, ipred)
+                update_residuals!(X, residuals, μX[icoef], oldcoef - newcoef, ipred)
                 # println("1 ipred = ", ipred, " diff = ", oldcoef - newcoef, " sq = ", Xssq[ipred])
-                maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[ipred])
+                maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[icoef])
             end
         end
     else
@@ -253,14 +265,17 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
             oldcoef == 0 && continue
             ipred = coef.coef2predictor[icoef]
 
-            v = Xssq[ipred]*oldcoef
-            newcoef = compute_newcoef(X, weights, residuals, Xssq[ipred], oldcoef, ipred, λ, α)
+            v = Xssq[icoef]*oldcoef
+            @simd for i = 1:size(X, 1)
+                @inbounds v += X[i, ipred]*residuals[i]*weights[i]
+            end
+            newcoef = S(v, λ*α)/(Xssq[icoef] + λ*(1 - α))
 
             if oldcoef != newcoef
                 coef.coef[icoef] = newcoef
-                update_residuals!(X, residuals, μX[ipred], oldcoef - newcoef, ipred)
+                update_residuals!(X, residuals, μX[icoef], oldcoef - newcoef, ipred)
                 # println("2 ipred = ", ipred, " diff = ", oldcoef - newcoef, " sq = ", Xssq[ipred])
-                maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[ipred])
+                maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[icoef])
             end
         end
     end
@@ -294,12 +309,14 @@ type CovarianceCoordinateDescent{T,S<:CoefficientIterator} <: CoordinateDescent{
     intercept::Bool               # whether an intercept should be fitted
     α::T                          # elastic net parameter
     maxiter::Int                  # maximum number of iterations
+    maxncoef::Int                 # maximum number of coefficients
     tol::T                        # tolerance
 
-    function CovarianceCoordinateDescent{T}(X::Matrix{T}, intercept::Bool, α::T, maxiter::Int, tol::T, coefiter::S)
+    function CovarianceCoordinateDescent{T}(X::Matrix{T}, intercept::Bool, α::T, maxncoef::Int, tol::T, coefiter::S)
         new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Array(T, size(X, 2)),
-            Array(T, size(X, 2)), Array(T, min(5*size(X, 1), size(X, 2)), size(X, 2)), Array(T, size(X, 1)),
-            Array(T, size(X, 1)), convert(T, NaN), coefiter, convert(T, NaN), intercept, α, maxiter, tol)
+            Array(T, size(X, 2)), Array(T, maxncoef, size(X, 2)), Array(T, size(X, 1)),
+            Array(T, size(X, 1)), convert(T, NaN), coefiter, convert(T, NaN), intercept, α,
+            typemax(Int), maxncoef, tol)
     end
 end
 
@@ -444,6 +461,8 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
             newcoef = S(s, λ*α)/(Xssq[ipred] + λ*(1 - α))
             if oldcoef != newcoef
                 if icoef == 0
+                    length(coef.coef) > cd.maxncoef &&
+                        error("maximum number of coefficients $(cd.maxncoef) exceeded at λ = $λ")
                     icoef = addcoef!(coef, ipred)
                     cd.coefitr = addcoef(cd.coefitr, icoef)
 
@@ -526,7 +545,16 @@ function fit!{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T}, λ, crit
     iter
 end
 
-intercept{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T}) = cd.intercept ? cd.μy - dot(cd.μX, coef) : zero(T)
+intercept{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{T}) = cd.intercept ? cd.μy - dot(cd.μX, coef) : zero(T)
+function intercept{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T})
+    !cd.intercept && return zero(T)
+    μX = cd.μX
+    v = cd.μy
+    for i = 1:length(coef.coef)
+        v -= μX[i]*coef.coef[i]
+    end
+    v
+end
 
 function linpred!{T}(mu::Vector{T}, X::Matrix{T}, coef::SparseCoefficients{T}, b0::T)
     A_mul_B!(mu, X, coef)
@@ -694,9 +722,8 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
                 if converged
                     for icoef = 1:nnz(newcoef)
                         oldcoefval = icoef > nnz(oldcoef) ? zero(T) : oldcoef.coef[icoef]
-                        ipred = newcoef.coef2predictor[icoef]
-                        # println("3 ipred = ", ipred, " diff = ", oldcoefval - newcoef.coef[icoef], " sq = ", Xssq[ipred])
-                        if abs2(oldcoefval - newcoef.coef[icoef])*Xssq[ipred] > irls_tol
+                        j = isa(cd, NaiveCoordinateDescent) ? icoef : newcoef.coef2predictor[icoef]
+                        if abs2(oldcoefval - newcoef.coef[icoef])*Xssq[j] > irls_tol
                             converged = false
                             break
                         end
@@ -737,7 +764,6 @@ end
 function StatsBase.fit{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=false,
                                          cd_maxiter::Int=10000, cd_tol::Real=1e-7, irls_tol::Real=1e-7,
                                          criterion=:obj, minStepFac::Real=eps())
-    irls_maxiter >= 1 || error("irls_maxiter must be positive")
     0 < minStepFac < 1 || error("minStepFac must be in (0, 1)")
     criterion == :obj || criterion == :coef || error("criterion must be obj or coef")
 
@@ -822,7 +848,8 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
                                                      λminratio::Number=ifelse(size(X, 1) < size(X, 2), 0.01, 1e-4),
                                                      λ::Union(Vector,Nothing)=nothing, standardize::Bool=true,
                                                      intercept::Bool=true, naivealgorithm::Bool=true, dofit::Bool=true,
-                                                     irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT, fitargs...)
+                                                     irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
+                                                     maxncoef::Int=min(size(X, 2), 2*size(X, 1)), fitargs...)
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
     n = length(y)
     length(wts) == n || error("length(wts) = $(length(wts)) should be 0 or $n")
@@ -842,8 +869,8 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
     α = convert(T, α)
     λminratio = convert(T, λminratio)
     coefitr = randomize ? RandomCoefficientIterator() : (1:0)
-    cd = naivealgorithm ? NaiveCoordinateDescent{T,typeof(coefitr)}(X, intercept, α, typemax(Int), 1e-7, coefitr) :
-                          CovarianceCoordinateDescent{T,typeof(coefitr)}(X, intercept, α, typemax(Int), 1e-7, coefitr)
+    cd = naivealgorithm ? NaiveCoordinateDescent{T,typeof(coefitr)}(X, intercept, α, maxncoef, 1e-7, coefitr) :
+                          CovarianceCoordinateDescent{T,typeof(coefitr)}(X, intercept, α, maxncoef, 1e-7, coefitr)
 
     # GLM response initialization
     autoλ = λ == nothing
