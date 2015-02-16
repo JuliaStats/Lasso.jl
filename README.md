@@ -22,13 +22,11 @@ fit(LassoPath, X, y, dist, link)
 `dist` is any distribution supported by GLM.jl and `link` defaults to
 the canonical link for that distribution.
 
-Parameters of the returned LassoPath object are documented in the
-source [here](https://github.com/simonster/Lasso.jl/blob/3388dc338bfaa5a90280c90158b7e6a6e8b2b607/src/Lasso.jl#L314-L327).
+More documentation is available at [ReadTheDocs](http://lassojl.readthedocs.org/en/latest/).
 
 ## TODO
 
  - Get package to work with Julia 0.4 (broken by [JuliaLang/julia#9232](https://github.com/JuliaLang/julia/issues/9232))
- - More documentation than just this README
  - User-specified weights are untested
  - Support unpenalized variables besides the intercept
  - Sparse matrix and custom AbstractMatrix support
