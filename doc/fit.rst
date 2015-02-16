@@ -23,10 +23,9 @@ Fitting Lasso paths
     ----------------- --------------------------------------------------------------- --------------------
      offset           Offset of each observation                                      ``zeros(length(y))``
     ----------------- --------------------------------------------------------------- --------------------
-     α                Elastic Net parameter in interval ``[0, 1]``. Controls the      ``1``
-                      tradeoff between L1 and L2 regularization. α = 1 fits a pure
-                      Lasso model, while α = 0 would fit a pure ridge regression
-                      model.
+     α                Elastic Net parameter in interval [0, 1]. Controls the tradeoff ``1``
+                      between L1 and L2 regularization. α = 1 fits a pure Lasso
+                      model, while α = 0 would fit a pure ridge regression model.
 
                       **Note**: Do not set α = 0. There are methods for fitting pure
                       ridge regression models that are substantially more efficient
@@ -36,12 +35,13 @@ Fitting Lasso paths
 
                       λ can be used to specify a specific set of λ values at which    If more observations
                       models should be fit. If λ is unspecified, Lasso.jl selects nλ  than predictors,
-                      logarithmically spaced λ values from :math:`λ_{\text{max}}`,    ``λminratio = 1e-4``.
-                      the smallest λ value yielding a null model, to                  Otherwise,
-                      :math:`\text{λminratio} * λ_{\text{max}}`. If the proportion of ``λminratio = 0.001``
-                      deviance explained exceeds 0.999 or the difference between the
-                      deviance explained by successive λ values falls below
-                      :math:`10^{-5}`, the path stops early.
+                      logarithmically spaced λ values from                            ``λminratio = 1e-4``.
+                      :math:`\lambda_{\text{max}}`, the smallest λ value yielding a   Otherwise,
+                      null model, to                                                  ``λminratio = 0.001``.
+                      :math:`\text{\lambda minratio} * \lambda_{\text{max}}`. If the 
+                      proportion of  deviance explained exceeds 0.999 or the
+                       difference between the deviance explained by successive λ
+                      values falls below:math:`10^{-5}`, the path stops early.
     ----------------- --------------------------------------------------------------- --------------------
     standardize       Whether to standardize predictors to unit standard deviation    ``true``
                       before fitting.

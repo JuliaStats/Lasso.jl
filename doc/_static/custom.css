@@ -7,6 +7,6 @@
     overflow: visible !important;
 }
 
-.wy-table td p, .wy-table th p {
+.wy-table-responsive td p, .wy-table-responsive th p {
 	font-size: inherit !important;
 }
