@@ -87,4 +87,26 @@ Fitting Lasso paths
     ----------------- --------------------------------------------------------------- --------------------
     minStepFac        The minimum step fraction for backtracking line search.         ``0.001``
     ================= =============================================================== ====================
-    
+
+    ``fit`` returns a LassoPath object describing the fit coefficients
+    and values of λ along the Lasso path. The following fields are
+    intended for external use:
+
+    ================= ====================================================================================
+      field              description
+    ================= ====================================================================================
+     λ                Vector of λ values corresponding to each fit model along the path
+    ----------------- ------------------------------------------------------------------------------------
+     coefs            SparseMatrixCSC of model coefficients. Columns correspond to fit models; rows
+                      correspond to predictors
+    ----------------- ------------------------------------------------------------------------------------
+     b0               Vector of model intercepts for each fit model
+    ----------------- ------------------------------------------------------------------------------------
+     pct_dev          Vector of proportion of deviance explained values for each fit model
+    ----------------- ------------------------------------------------------------------------------------
+     nulldev          The deviance of the null model (including the intercept, if specified)
+    ----------------- ------------------------------------------------------------------------------------
+     nullb0           The intercept of the null model, or 0 if no intercept was fit
+    ----------------- ------------------------------------------------------------------------------------
+     niter            Total number of coordinate descent iterations required to fit all models
+    ================= ====================================================================================
