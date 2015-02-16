@@ -26,7 +26,6 @@ More documentation is available at [ReadTheDocs](http://lassojl.readthedocs.org/
 
 ## TODO
 
- - Get package to work with Julia 0.4 (broken by [JuliaLang/julia#9232](https://github.com/JuliaLang/julia/issues/9232))
  - User-specified weights are untested
  - Support unpenalized variables besides the intercept
  - Sparse matrix and custom AbstractMatrix support
