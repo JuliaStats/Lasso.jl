@@ -709,7 +709,8 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
 
                 # Compute Elastic Net objective
                 objold = obj
-                obj = deviance(r)/2 + curλ*P(α, newcoef)
+                dev = deviance(r)
+                obj = dev/2 + curλ*P(α, newcoef)
 
                 if obj > objold + length(scratchmu)*eps(objold)
                     f = 1.0
@@ -721,7 +722,8 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
                             newcoef.coef[icoef] = oldcoefval+f*(newcoef.coef[icoef] - oldcoefval)
                         end
                         b0 = oldb0+f*b0diff
-                        dev = updatemu!(r, linpred!(scratchmu, cd, newcoef, b0))
+                        updatemu!(r, linpred!(scratchmu, cd, newcoef, b0))
+                        dev = deviance(r)
                         obj = dev/2 + curλ*P(α, newcoef)
                     end
                 end
@@ -888,7 +890,7 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
 
     # GLM response initialization
     autoλ = λ == nothing
-    wts = eltype(wts) == T ? scale(wts, 1/sum(wts)) : scale!(convert(typeof(y), wts), 1/n)
+    wts .*= convert(T, 1/sum(wts))
     off = convert(Vector{T}, offset)
 
     if isa(d, Normal) && isa(l, IdentityLink)
