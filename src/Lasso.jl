@@ -705,11 +705,11 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
                 b0 = intercept(newcoef, cd)
 
                 # Update GLM and get deviance
-                dev = updatemu!(r, linpred!(scratchmu, cd, newcoef, b0))
+                updatemu!(r, linpred!(scratchmu, cd, newcoef, b0))
 
                 # Compute Elastic Net objective
                 objold = obj
-                obj = dev/2 + curλ*P(α, newcoef)
+                obj = deviance(r)/2 + curλ*P(α, newcoef)
 
                 if obj > objold + length(scratchmu)*eps(objold)
                     f = 1.0
