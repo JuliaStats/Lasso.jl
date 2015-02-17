@@ -15,9 +15,9 @@ end
 ## HELPERS FOR SPARSE COEFFICIENTS
 
 immutable SparseCoefficients{T} <: AbstractVector{T}
-    coef::Vector{T}
-    coef2predictor::Vector{Int}
-    predictor2coef::Vector{Int}
+    coef::Vector{T}              # Individual coefficient values
+    coef2predictor::Vector{Int}  # Mapping from indices in coef to indices in original X
+    predictor2coef::Vector{Int}  # Mapping from indices in original X to indices in coef
 
     SparseCoefficients(n::Int) = new(T[], Int[], zeros(Int, n))
 end
@@ -66,6 +66,7 @@ function Base.copy!(x::SparseCoefficients, y::SparseCoefficients)
     x
 end
 
+# Add a new coefficient to x, returning its index in x.coef
 function addcoef!{T}(x::SparseCoefficients{T}, ipred::Int)
     push!(x.coef, zero(T))
     push!(x.coef2predictor, ipred)
@@ -76,6 +77,8 @@ end
 ## COEFFICIENT ITERATION IN SEQUENTIAL OR RANDOM ORDER
 
 if VERSION >= v"0.4-dev+1915"
+    # Julia 0.4 has a nice interface that lets us do random coefficient
+    # iteration quickly.
     immutable RandomCoefficientIterator
         rng::MersenneTwister
         rg::Base.Random.RangeGeneratorInt{Int,Uint}
@@ -92,6 +95,9 @@ else
     const RANDOMIZE_DEFAULT = false
 end
 
+typealias CoefficientIterator Union(UnitRange{Int}, RandomCoefficientIterator)
+
+# Iterate over coefficients in random order
 function Base.start(x::RandomCoefficientIterator)
     if !isempty(x.coeforder)
         @inbounds for i = length(x.coeforder):-1:2
@@ -104,18 +110,19 @@ end
 Base.next(x::RandomCoefficientIterator, i) = (x.coeforder[i], i += 1)
 Base.done(x::RandomCoefficientIterator, i) = i > length(x.coeforder)
 
+# Add an additional coefficient and return a new CoefficientIterator
 function addcoef(x::RandomCoefficientIterator, icoef::Int)
     push!(x.coeforder, icoef)
     RandomCoefficientIterator(x.rng, Base.Random.RangeGenerator(1:length(x.coeforder)), x.coeforder)
 end
-typealias CoefficientIterator Union(UnitRange{Int}, RandomCoefficientIterator)
-
 addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
 
 ## COORDINATE DESCENT ROUTINES
 
+# Soft threshold function
 S(z, γ) = abs(z) <= γ ? zero(z) : ifelse(z > 0, z - γ, z + γ)
 
+# Elastic net penalty with parameter α and given coefficients
 function P{T}(α::T, β::SparseCoefficients{T})
     x = zero(T)
     @inbounds @simd for i = 1:nnz(β)
@@ -247,7 +254,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
 
     maxdelta = zero(T)
     @inbounds if all
-        # Use all variables for first and last iterations
+        # Use all predictors for first and last iterations
         for ipred = 1:size(X, 2)
             icoef = coef.predictor2coef[ipred]
 
@@ -275,6 +282,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
             maxdelta = max(maxdelta, update_coef!(cd, coef, newcoef, icoef, ipred))
         end
     else
+        # Iterate over only the predictors already in the model
         for icoef = cd.coefitr
             oldcoef = coef.coef[icoef]
             oldcoef == 0 && continue
@@ -402,13 +410,6 @@ function update!{T,Intercept}(cd::CovarianceCoordinateDescent{T,Intercept},
         cd.μy = μy
     end
 
-    # Compute y'y
-    yty = zero(T)
-    @simd for i = 1:length(y)
-        @inbounds yty += abs2(y[i] - μy)*weights[i]
-    end
-    cd.yty = yty
-
     for j = 1:size(X, 2)
         μ = zero(T)
         if Intercept
@@ -431,6 +432,14 @@ function update!{T,Intercept}(cd::CovarianceCoordinateDescent{T,Intercept},
         Xty[j] = v
     end
 
+    # Compute y'y
+    yty = zero(T)
+    @simd for i = 1:length(y)
+        @inbounds yty += abs2(y[i] - μy)*weights[i]
+    end
+    cd.yty = yty
+
+    # Compute X'X for predictors in model
     for icoef = 1:nnz(coef)
         computeXtX!(cd, coef, icoef, coef.coef2predictor[icoef])
     end
@@ -453,7 +462,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
     maxdelta = zero(T)
     if all
         @inbounds for ipred = 1:length(Xty)
-            # Use all variables for first and last iterations
+            # Use all predictors for first and last iterations
             s = Xty[ipred] - compute_gradient(XtX, coef, ipred)
 
             icoef = coef.predictor2coef[ipred]
@@ -481,6 +490,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
             end
         end
     else
+        # Iterate over only the predictors already in the model
         @inbounds for icoef = cd.coefitr
             ipred = coef.coef2predictor[icoef]
             oldcoef = coef.coef[icoef]
@@ -600,6 +610,7 @@ end
 const MIN_DEV_FRAC_DIFF = 1e-5
 const MAX_DEV_FRAC = 0.999
 
+# Add newcoef to column i of coefs
 function addcoefs!(coefs::SparseMatrixCSC, newcoef::SparseCoefficients, i::Int)
     n = nnz(coefs)
     nzval = coefs.nzval
@@ -622,14 +633,15 @@ function addcoefs!(coefs::SparseMatrixCSC, newcoef::SparseCoefficients, i::Int)
     coefs.colptr[i+1:end] = n+1
 end
 
-function wrkresp!(out, x, y, offset)
+# Compute working response based on eta and working residuals
+function wrkresp!(out, eta, wrkresid, offset)
     if isempty(offset)
         @simd for i = 1:length(out)
-            @inbounds out[i] = x[i] + y[i]
+            @inbounds out[i] = eta[i] + wrkresid[i]
         end
     else
         @simd for i = 1:length(out)
-            @inbounds out[i] = x[i] + y[i] - offset[i]
+            @inbounds out[i] = eta[i] + wrkresid[i] - offset[i]
         end
     end
     out
@@ -687,8 +699,6 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
             obj = convert(T, Inf)
             last_dev_ratio = dev_ratio
             curλ = λ[i]
-            # println()
-            # println("λ = $curλ")
 
             converged = false
 
@@ -842,6 +852,7 @@ end
 
 ## MODEL CONSTRUCTION
 
+# Compute automatic λ values based on X'y and λminratio
 function computeλ(Xy, λminratio, α, nλ)
     λmax = abs(Xy[1])
     for i = 1:length(Xy)
@@ -922,7 +933,7 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
         model = LinearModel(LmResp{typeof(y)}(mu, off, wts, y), cd)
     else
         # Fit to find null deviance
-        # Maybe we should use this GlmResp object?
+        # Maybe we should reuse this GlmResp object?
         nullmodel = fit(GeneralizedLinearModel, ones(T, n, ifelse(intercept, 1, 0)), y, d, l;
                         wts=wts, offset=offset, convTol=irls_tol)
         nulldev = deviance(nullmodel)
