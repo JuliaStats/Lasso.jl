@@ -1,10 +1,11 @@
 module Lasso
 import Base.LinAlg.BlasReal
+include("FusedLasso.jl")
 
 using Reexport, StatsBase
-@reexport using GLM, Distributions
+@reexport using GLM, Distributions, .FusedLassoMod
 using GLM.FPVector, GLM.wrkwt!
-export LassoPath, fit
+export LassoPath, fit, fit!, coef
 
 # Extract fields from object into function locals
 # See https://github.com/JuliaLang/julia/issues/9755
@@ -532,7 +533,7 @@ function linpred!{T}(mu::Vector{T}, cd::CovarianceCoordinateDescent{T},
     mu
 end
 
-function fit!{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T}, λ, criterion)
+function cdfit!{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T}, λ, criterion)
     maxiter = cd.maxiter
     tol = cd.tol
     n = size(cd.X, 1)
@@ -605,6 +606,8 @@ function Base.show(io::IO, path::LassoPath)
     Base.showarray(io, [path.λ path.pct_dev ncoefs]; header=false)
 end
 
+StatsBase.coef(path::LassoPath) = path.coefs
+
 ## FITTING (INCLUDING IRLS)
 
 const MIN_DEV_FRAC_DIFF = 1e-5
@@ -648,9 +651,9 @@ function wrkresp!(out, eta, wrkresid, offset)
 end
 
 # Fits GLMs (outer and middle loops)
-function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbose::Bool=false, irls_maxiter::Int=30,
-                                                    cd_maxiter::Int=100000, cd_tol::Real=1e-7, irls_tol::Real=1e-7,
-                                                    criterion=:coef, minStepFac::Real=0.001)
+function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbose::Bool=false, irls_maxiter::Int=30,
+                                                     cd_maxiter::Int=100000, cd_tol::Real=1e-7, irls_tol::Real=1e-7,
+                                                     criterion=:coef, minStepFac::Real=0.001)
     irls_maxiter >= 1 || error("irls_maxiter must be positive")
     0 < minStepFac < 1 || error("minStepFac must be in (0, 1)")
     criterion == :obj || criterion == :coef || error("criterion must be obj or coef")
@@ -711,7 +714,7 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
                 wrkwt = wrkwt!(r)
 
                 # Run coordinate descent inner loop
-                niter += fit!(newcoef, update!(cd, newcoef, scratchmu, wrkwt), curλ, criterion)
+                niter += cdfit!(newcoef, update!(cd, newcoef, scratchmu, wrkwt), curλ, criterion)
                 b0 = intercept(newcoef, cd)
 
                 # Update GLM and get deviance
@@ -788,9 +791,9 @@ function StatsBase.fit{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbos
 end
 
 # Fits linear models (just the outer loop)
-function StatsBase.fit{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=false,
-                                         cd_maxiter::Int=10000, cd_tol::Real=1e-7, irls_tol::Real=1e-7,
-                                         criterion=:coef, minStepFac::Real=eps())
+function StatsBase.fit!{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=false,
+                                          cd_maxiter::Int=10000, cd_tol::Real=1e-7, irls_tol::Real=1e-7,
+                                          criterion=:coef, minStepFac::Real=eps())
     0 < minStepFac < 1 || error("minStepFac must be in (0, 1)")
     criterion == :obj || criterion == :coef || error("criterion must be obj or coef")
 
@@ -824,7 +827,7 @@ function StatsBase.fit{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=fal
         curλ = λ[i]
 
         # Run coordinate descent
-        niter += fit!(newcoef, cd, curλ, criterion)
+        niter += cdfit!(newcoef, cd, curλ, criterion)
 
         dev_ratio = cd.dev/nulldev
         pct_dev[i] = 1 - dev_ratio
@@ -967,7 +970,7 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
 
     # Fit path
     path = LassoPath{typeof(model),T}(model, nulldev, nullb0, λ, autoλ, Xnorm)
-    dofit && fit(path; irls_tol=irls_tol, fitargs...)
+    dofit && fit!(path; irls_tol=irls_tol, fitargs...)
     path
 end
 

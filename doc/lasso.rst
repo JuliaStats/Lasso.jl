@@ -1,4 +1,4 @@
-Fitting Lasso paths
+Lasso paths
 =============================================
 
 .. function:: fit(LassoPath, X, y, d=Normal(), l=canonicallink(d); ...)
@@ -6,7 +6,7 @@ Fitting Lasso paths
     Fits a linear or generalized linear Lasso path given the design
     matrix `X` and response `y`:
 
-    .. math:: \underset{\beta}{\operatorname{argmax}} \frac{1}{N} \mathcal{L}(y|X,\beta) + (1-\alpha)\frac{1}{2}\|\beta\|_2^2 + \alpha\|\beta\|_1
+    .. math:: \underset{\beta}{\operatorname{argmin}} \frac{1}{N} \mathcal{L}(y|X,\beta) + (1-\alpha)\frac{1}{2}\|\beta\|_2^2 + \alpha\|\beta\|_1
 
     The optional argument `d` specifies the conditional distribution of
     response, while `l` specifies the link function. Lasso.jl inherits
@@ -64,7 +64,7 @@ Fitting Lasso paths
                       exceeded, an error will be thrown.
     ----------------- --------------------------------------------------------------- --------------------
     dofit             Whether to fit the model upon construction. If `false`, the     ``true``
-                      model can be fit later by calling `fit(model)`.
+                      model can be fit later by calling `fit!(model)`.
     ----------------- --------------------------------------------------------------- --------------------
     cd_tol            The tolerance for coordinate descent iterations iterations in   ``1e-7``
                       the inner loop.
@@ -110,3 +110,8 @@ Fitting Lasso paths
     ----------------- ------------------------------------------------------------------------------------
      niter            Total number of coordinate descent iterations required to fit all models
     ================= ====================================================================================
+
+    For details of the algorithm, see Friedman, J., Hastie, T., &
+    Tibshirani, R. (2010). Regularization paths for generalized linear
+    models via coordinate descent. Journal of Statistical Software,
+    33(1), 1.
