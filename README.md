@@ -10,6 +10,13 @@ Friedman, J., Hastie, T., & Tibshirani, R. (2010). Regularization paths
 for generalized linear models via coordinate descent. Journal of
 Statistical Software, 33(1), 1. http://www.jstatsoft.org/v33/i01/
 
+Lasso.jl also includes an implementation of the `O(n)` fused Lasso
+implementation described in:
+
+Johnson, N. A. (2013). A dynamic programming algorithm for the fused
+lasso and L0-segmentation. Journal of Computational and Graphical
+Statistics, 22(2), 246–260. doi:10.1080/10618600.2012.681238
+
 ## Quick start
 
 To fit a Lasso path with default parameters:
@@ -21,6 +28,13 @@ fit(LassoPath, X, y, dist, link)
 
 `dist` is any distribution supported by GLM.jl and `link` defaults to
 the canonical link for that distribution.
+
+To fit a fused Lasso model:
+
+```julia
+using Lasso
+fit(FusedLasso, y, lambda)
+```
 
 More documentation is available at [ReadTheDocs](http://lassojl.readthedocs.org/en/latest/).
 
