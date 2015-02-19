@@ -14,6 +14,7 @@ immutable DifferenceMatrix{T} <: AbstractMatrix{T}
     si::Vector{T}                 # State for A_mul_B!/At_mul_B!
 
     function DifferenceMatrix(k, n)
+        n >= 2*k+2 || throw(ArgumentError("signal must have length >= 2*order+2"))
         b = T[ifelse(isodd(i), -1, 1)*binomial(k+1, i) for i = 0:k+1]
         new(k, n, b, zeros(T, k+1))
     end
@@ -23,6 +24,8 @@ Base.size(K::DifferenceMatrix) = (K.n-K.k-1, K.n)
 
 # Multiply by difference matrix by filtering
 function Base.LinAlg.A_mul_B!(out::AbstractVector, K::DifferenceMatrix, x::AbstractVector, α::Real=1)
+    length(x) == size(K, 2) || throw(DimensionMismatch())
+    length(out) == size(K, 1) || throw(DimensionMismatch())
     b = K.b
     si = fill!(K.si, 0)
     silen = length(b)-1
@@ -42,6 +45,8 @@ end
 *(K::DifferenceMatrix, x::AbstractVector) = A_mul_B!(similar(x, size(K, 1)), K, x)
 
 function Base.LinAlg.At_mul_B!(out::AbstractVector, K::DifferenceMatrix, x::AbstractVector, α::Real=1)
+    length(x) == size(K, 1) || throw(DimensionMismatch())
+    length(out) == size(K, 2) || throw(DimensionMismatch())
     b = K.b
     si = fill!(K.si, 0)
     silen = length(b)-1
@@ -138,29 +143,32 @@ type TrendFilter{T,S}
     DktDk::SparseMatrixCSC{T,Int}            # Dk'Dk
     β::Vector{T}                             # Output coefficients and temporary storage for ρD(k+1)'α + u
     u::Vector{T}                             # ADMM u
-    Dβ::Vector{T}                            # Temporary storage for D(k)*β
+    Dkβ::Vector{T}                           # Temporary storage for D(k)*β
+    Dkp1β::Vector{T}                         # Temporary storage for D(k+1)*β (aliases Dkβ)
     flsa::FusedLasso{T,S}                    # Fused lasso model
     niter::Int                               # Number of ADMM iterations
 end
 
 function StatsBase.fit{T}(::Type{TrendFilter}, y::AbstractVector{T}, order, λ; dofit::Bool=true, args...)
+    order >= 1 || throw(ArgumentError("order must be >= 1"))
     Dkp1 = DifferenceMatrix{T}(order, length(y))
     Dk = DifferenceMatrix{T}(order-1, length(y))
     β = zeros(T, length(y))
     u = zeros(T, size(Dk, 1))
-    Dβ = zeros(T, size(Dk, 1))
-    tf = TrendFilter(Dkp1, Dk, Dk'Dk, β, u, Dβ, fit(FusedLasso, Dβ, λ; dofit=false), -1)
+    Dkp1β = zeros(T, size(Dkp1, 1))
+    Dkβ = pointer_to_array(pointer(Dkp1β), size(Dk, 1))
+    tf = TrendFilter(Dkp1, Dk, Dk'Dk, β, u, Dkβ, Dkp1β, fit(FusedLasso, Dkβ, λ; dofit=false), -1)
     dofit && fit!(tf, y, λ; args...)
     return tf
 end
 
 function StatsBase.fit!{T}(tf::TrendFilter{T}, y::AbstractVector{T}, λ::Real; niter=100000, tol=1e-6, ρ=λ)
-    @extractfields tf Dkp1 Dk DktDk β u Dβ flsa
+    @extractfields tf Dkp1 Dk DktDk β u Dkβ Dkp1β flsa
     length(y) == length(β) || throw(ArgumentError("input size $(length(y)) does not match model size $(length(β))"))
 
     # Reuse this memory
     ρDtαu = β
-    αpu = Dβ
+    αpu = Dkβ
 
     fact = cholfact(speye(size(Dk, 2)) + ρ*DktDk)
     α = coef(flsa)
@@ -175,14 +183,14 @@ function StatsBase.fit!{T}(tf::TrendFilter{T}, y::AbstractVector{T}, λ::Real; n
         β = fact\broadcast!(+, ρDtαu, ρDtαu, y)
 
         # Check for convergence
-        A_mul_B!(Dβ, Dkp1, β)
+        A_mul_B!(Dkp1β, Dkp1, β)
         oldobj = obj
-        obj = sumsqdiff(y, β)/2 + λ*sumabs(Dβ)
+        obj = sumsqdiff(y, β)/2 + λ*sumabs(Dkp1β)
         abs(oldobj - obj) < abs(obj * tol) && break
 
         # Eq. 12 (update α)
-        A_mul_B!(Dβ, Dk, β)
-        broadcast!(-, u, Dβ, u)
+        A_mul_B!(Dkβ, Dk, β)
+        broadcast!(-, u, Dkβ, u)
         fit!(flsa, u, λ/ρ)
 
         # Eq. 13 (update u; u actually contains Dβ - u)

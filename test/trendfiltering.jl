@@ -30,7 +30,7 @@ facts("TrendFiltering") do
         context("order = $(order)") do
             for lambda in (1., 10., 100.)
                 context("lambda = $(lambda)") do
-                    @fact coef(fit(TrendFilter, lakehuron, order, lambda; tol=eps())) =>
+                    @fact coef(fit(TrendFilter, lakehuron, order, lambda; tol=1e-9)) =>
                           roughly(vec(readcsv(joinpath(DATADIR, "LakeHuron_order_$(order)_lambda_$(lambda).csv"))))
                 end
             end
