@@ -1,17 +1,21 @@
 module Lasso
+module Util
+    # Extract fields from object into function locals
+    # See https://github.com/JuliaLang/julia/issues/9755
+    macro extractfields(from, fields...)
+        esc(Expr(:block, [:($(fields[i]) = $(from).$(fields[i])) for i = 1:length(fields)]...))
+    end
+    export @extractfields
+end
+
 import Base.LinAlg.BlasReal
 include("FusedLasso.jl")
+include("TrendFiltering.jl")
 
-using Reexport, StatsBase
-@reexport using GLM, Distributions, .FusedLassoMod
+using Reexport, StatsBase, .Util
+@reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
 using GLM.FPVector, GLM.wrkwt!
 export LassoPath, fit, fit!, coef
-
-# Extract fields from object into function locals
-# See https://github.com/JuliaLang/julia/issues/9755
-macro extractfields(from, fields...)
-    esc(Expr(:block, [:($(fields[i]) = $(from).$(fields[i])) for i = 1:length(fields)]...))
-end
 
 ## HELPERS FOR SPARSE COEFFICIENTS
 

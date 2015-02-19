@@ -52,6 +52,8 @@ function StatsBase.fit!{T,S}(flsa::FusedLasso{T,S}, y::AbstractVector{T}, λ::Re
     knots = flsa.knots
     bp = flsa.bp
 
+    length(y) == length(β) || throw(ArgumentError("input size $(length(y)) does not match model size $(length(β))"))
+
     resize!(knots, 2)
     knots[1] = Knot{T,S}(-Inf, S(0), 1)
     knots[2] = Knot{T,S}(Inf, S(0), -1)
