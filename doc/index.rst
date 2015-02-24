@@ -12,7 +12,7 @@ Contents:
    :maxdepth: 2
 
    lasso.rst
-   fusedlasso.rst
+   smoothing.rst
 
 
 
