@@ -136,16 +136,16 @@ function P{T}(α::T, β::SparseCoefficients{T})
     x
 end
 
-abstract CoordinateDescent{T,Intercept} <: LinPred
-type NaiveCoordinateDescent{T,Intercept,S<:CoefficientIterator} <: CoordinateDescent{T,Intercept}
-    X::Matrix{T}                  # original design matrix
+abstract CoordinateDescent{T,Intercept,M<:AbstractMatrix} <: LinPred
+type NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator} <: CoordinateDescent{T,Intercept,M}
+    X::M                          # original design matrix
     μy::T                         # mean of y at current weights
-    μX::Vector{T}                 # mean of X at current weights (in coefficient order)
+    μX::Vector{T}                 # mean of X at current weights (in predictor order)
     Xssq::Vector{T}               # weighted sum of squares of each column of X (in coefficient order)
     residuals::Vector{T}          # y - Xβ (unscaled with centered X)
+    residualoffset::T             # offset of residuals (used only when X is sparse)
     weights::Vector{T}            # weights for each observation
-    oldy::Vector{T}               # old y vector (for updating residuals
-                                  # without matrix multiplication)
+    oldy::Vector{T}               # old y vector (for updating residuals without matrix multiplication)
     weightsum::T                  # sum(weights)
     coefitr::S                    # coefficient iterator
     dev::T                        # last deviance
@@ -154,41 +154,70 @@ type NaiveCoordinateDescent{T,Intercept,S<:CoefficientIterator} <: CoordinateDes
     maxncoef::Int                 # maximum number of coefficients
     tol::T                        # tolerance
 
-    NaiveCoordinateDescent(X::Matrix{T}, α::T, maxncoef::Int, tol::T, coefitr::S) =
-        new(X, zero(T), zeros(T, maxncoef), zeros(T, maxncoef), Array(T, size(X, 1)), Array(T, size(X, 1)),
-            Array(T, size(X, 1)), convert(T, NaN), coefitr, convert(T, NaN), α, typemax(Int),
-            maxncoef, tol)
+    NaiveCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefitr::S) =
+        new(X, zero(T), zeros(T, size(X, 2)), zeros(T, maxncoef), Array(T, size(X, 1)), zero(T),
+            Array(T, size(X, 1)), Array(T, size(X, 1)), convert(T, NaN), coefitr, convert(T, NaN),
+            α, typemax(Int), maxncoef, tol)
 end
 
-# Compute μX and Xssq for given predictor
-function computeXssq!{T,Intercept}(cd::NaiveCoordinateDescent{T,Intercept}, icoef::Int, ipred::Int)
-    @extractfields cd X Xssq weights
-
-    μ = zero(T)
-    if Intercept
-        # Update μX
+# Compute μX for all predictors
+function computeμX!{T}(cd::CoordinateDescent{T})
+    @extractfields cd X μX weights weightsum
+    for ipred = 1:size(X, 2)
+        μ = zero(T)
         @simd for i = 1:size(X, 1)
             @inbounds μ += X[i, ipred]*weights[i]
         end
-        μ /= cd.weightsum
-        cd.μX[icoef] = μ
+        μX[ipred] = μ/weightsum
     end
-
-    # Update Xssq
-    ws = zero(T)
-    @simd for i = 1:size(X, 1)
-        @inbounds ws += abs2(X[i, ipred] - μ)*weights[i]
-    end
-    Xssq[icoef] = ws
-
     cd
+end
+
+function computeμX!{T,Intercept,M<:SparseMatrixCSC}(cd::CoordinateDescent{T,Intercept,M})
+    @extractfields cd X μX weights weightsum
+    @extractfields X rowval nzval colptr
+    for ipred = 1:size(X, 2)
+        μ = zero(T)
+        @simd for i = colptr[ipred]:colptr[ipred+1]-1
+            row = rowval[i]
+            @inbounds μ += nzval[i]*weights[row]
+        end
+        μX[ipred] = μ/weightsum
+    end
+    cd
+end
+
+# Compute Xssq for given predictor, with mean subtracted if there is
+# an intercept
+function computeXssq{T,Intercept}(cd::NaiveCoordinateDescent{T,Intercept}, ipred::Int)
+    @extractfields cd X weights
+    μ = Intercept ? cd.μX[ipred] : zero(T)
+    ssq = zero(T)
+    @simd for i = 1:size(X, 1)
+        @inbounds ssq += abs2(X[i, ipred] - μ)*weights[i]
+    end
+    ssq
+end
+
+function computeXssq{T,Intercept,M<:SparseMatrixCSC}(cd::NaiveCoordinateDescent{T,Intercept,M}, ipred::Int)
+    @extractfields cd X weights
+    @extractfields X rowval nzval colptr
+    μ = Intercept ? cd.μX[ipred] : zero(T)
+    ssq = zero(T)
+    zeroweightsum = cd.weightsum
+    @inbounds @simd for i = colptr[ipred]:colptr[ipred+1]-1
+        row = rowval[i]
+        ssq += abs2(nzval[i] - μ)*weights[row]
+        zeroweightsum -= weights[row]
+    end
+    ssq + zeroweightsum*abs2(μ)
 end
 
 # Updates CoordinateDescent object with (possibly) new y vector and
 # weights
 function update!{T,Intercept}(cd::NaiveCoordinateDescent{T,Intercept}, coef::SparseCoefficients{T},
                               y::Vector{T}, wt::Vector{T})
-    @extractfields cd residuals X weights oldy
+    @extractfields cd residuals X Xssq weights oldy
     copy!(weights, wt)
     weightsum = cd.weightsum = sum(weights)
     weightsuminv = inv(weightsum)
@@ -198,6 +227,7 @@ function update!{T,Intercept}(cd::NaiveCoordinateDescent{T,Intercept}, coef::Spa
         copy!(residuals, y)
         copy!(oldy, y)
     else
+        cd.residualoffset = 0
         @inbounds @simd for i = 1:length(y)
             residuals[i] += y[i] - oldy[i]
             oldy[i] = y[i]
@@ -220,10 +250,12 @@ function update!{T,Intercept}(cd::NaiveCoordinateDescent{T,Intercept}, coef::Spa
         @simd for i = 1:length(residuals)
             @inbounds residuals[i] -= μres
         end
+
+        computeμX!(cd)
     end
 
     for icoef = 1:nnz(coef)
-        computeXssq!(cd, icoef, coef.coef2predictor[icoef])
+        Xssq[icoef] = computeXssq(cd, coef.coef2predictor[icoef])
     end
     cd
 end
@@ -235,17 +267,68 @@ if VERSION < v"0.4.0-dev+707"
     end
 end
 
+# Offset of each residual. This is used only for sparse matrices with
+# an intercept, so that we can update only residuals for which a
+# changed coefficient is non-zero instead of updating all of them. In
+# the dense case, we need to update all coefficients anyway, so this
+# strategy is unneeded.
+residualoffset{T}(cd::NaiveCoordinateDescent{T}) = zero(T)
+residualoffset{T,M<:SparseMatrixCSC}(cd::NaiveCoordinateDescent{T,true,M}) = cd.residualoffset
+
+# Compute the gradient term (first term of RHS of eq. 8)
+@inline function compute_grad{T}(::NaiveCoordinateDescent{T}, X::AbstractMatrix{T},
+                                 residuals::Vector{T}, weights::Vector{T}, ipred::Int)
+    v = zero(T)
+    @simd for i = 1:size(X, 1)
+        @inbounds v += X[i, ipred]*residuals[i]*weights[i]
+    end
+    v
+end
+
+@inline function compute_grad{T}(cd::NaiveCoordinateDescent{T}, X::SparseMatrixCSC{T},
+                                 residuals::Vector{T}, weights::Vector{T}, ipred::Int)
+    @extractfields X rowval nzval colptr
+    @inbounds v = residualoffset(cd)*cd.weightsum*cd.μX[ipred]
+    @inbounds @simd for i = colptr[ipred]:colptr[ipred+1]-1
+        row = rowval[i]
+        v += nzval[i]*residuals[row]*weights[row]
+    end
+    v
+end
+
 # Update coefficient and residuals, returning scaled squared difference
-@inline function update_coef!{T,Intercept}(cd::NaiveCoordinateDescent{T,Intercept}, coef::SparseCoefficients{T},
+@inline function update_coef!{T,Intercept}(cd::NaiveCoordinateDescent{T,Intercept},
+                                           coef::SparseCoefficients{T},
                                            newcoef::T, icoef::Int, ipred::Int)
     coefdiff = coef.coef[icoef] - newcoef
     if coefdiff != 0
         coef.coef[icoef] = newcoef
-        μ = Intercept ? cd.μX[icoef] : zero(T)
+        μ = Intercept ? cd.μX[ipred] : zero(T)
 
         @extractfields cd X residuals
         @simd for i = 1:size(X, 1)
             @inbounds residuals[i] += coefdiff*(X[i, ipred] - μ)
+        end
+        abs2(coefdiff)*cd.Xssq[icoef]
+    else
+        zero(T)
+    end
+end
+
+@inline function update_coef!{T,Intercept,M<:SparseMatrixCSC}(cd::NaiveCoordinateDescent{T,Intercept,M},
+                                                              coef::SparseCoefficients{T},
+                                                              newcoef::T, icoef::Int, ipred::Int)
+    coefdiff = coef.coef[icoef] - newcoef
+    if coefdiff != 0
+        coef.coef[icoef] = newcoef
+        @extractfields cd X residuals
+        @extractfields X rowval nzval colptr
+        if Intercept
+            cd.residualoffset -= coefdiff*cd.μX[ipred]
+        end
+        @inbounds @simd for i = colptr[ipred]:colptr[ipred+1]-1
+            row = rowval[i]
+            residuals[row] += coefdiff*nzval[i]
         end
         abs2(coefdiff)*cd.Xssq[icoef]
     else
@@ -261,12 +344,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
     @inbounds if all
         # Use all predictors for first and last iterations
         for ipred = 1:size(X, 2)
-            icoef = coef.predictor2coef[ipred]
-
-            v = zero(T)
-            @simd for i = 1:size(X, 1)
-                @inbounds v += X[i, ipred]*residuals[i]*weights[i]
-            end
+            v = compute_grad(cd, X, residuals, weights, ipred)
 
             icoef = coef.predictor2coef[ipred]
             if icoef != 0
@@ -280,7 +358,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
                     error("maximum number of coefficients $(cd.maxncoef) exceeded at λ = $λ")
                 icoef = addcoef!(coef, ipred)
                 cd.coefitr = addcoef(cd.coefitr, icoef)
-                computeXssq!(cd, icoef, ipred)
+                Xssq[icoef] = computeXssq(cd, ipred)
             end
             newcoef = S(v, λ*α)/(Xssq[icoef] + λ*(1 - α))
 
@@ -293,10 +371,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
             oldcoef == 0 && continue
             ipred = coef.coef2predictor[icoef]
 
-            v = Xssq[icoef]*oldcoef
-            @simd for i = 1:size(X, 1)
-                @inbounds v += X[i, ipred]*residuals[i]*weights[i]
-            end
+            v = Xssq[icoef]*oldcoef + compute_grad(cd, X, residuals, weights, ipred)
             newcoef = S(v, λ*α)/(Xssq[icoef] + λ*(1 - α))
 
             maxdelta = max(maxdelta, update_coef!(cd, coef, newcoef, icoef, ipred))
@@ -307,11 +382,11 @@ end
 
 # Sum of squared residuals. Residuals are always up to date
 function ssr{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T})
-    residuals = cd.residuals
-    weights = cd.weights
+    @extractfields cd residuals weights
+    roffset = residualoffset(cd)
     s = zero(T)
     @simd for i = 1:length(residuals)
-        @inbounds s += abs2(residuals[i])*weights[i]
+        @inbounds s += abs2(residuals[i] + roffset)*weights[i]
     end
     s
 end
@@ -321,8 +396,8 @@ intercept{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T,false}) = zero
 function intercept{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T,true})
     μX = cd.μX
     v = cd.μy
-    for i = 1:nnz(coef)
-        v -= μX[i]*coef.coef[i]
+    for icoef = 1:nnz(coef)
+        v -= μX[coef.coef2predictor[icoef]]*coef.coef[icoef]
     end
     v
 end
@@ -330,14 +405,15 @@ end
 # Value of the linear predictor
 function linpred!{T}(mu::Vector{T}, cd::NaiveCoordinateDescent{T}, coef::SparseCoefficients{T}, b0::T)
     @extractfields cd oldy residuals
+    roffset = residualoffset(cd)
     @simd for i = 1:length(mu)
-        @inbounds mu[i] = oldy[i] - residuals[i]
+        @inbounds mu[i] = oldy[i] - (residuals[i] + roffset)
     end
     mu
 end
 
-type CovarianceCoordinateDescent{T,Intercept,S<:CoefficientIterator} <: CoordinateDescent{T,Intercept}
-    X::Matrix{T}                  # original design matrix
+type CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator} <: CoordinateDescent{T,Intercept,M}
+    X::M                          # original design matrix
     μy::T                         # mean of y at current weights
     μX::Vector{T}                 # mean of X at current weights
     yty::T                        # y'y (scaled by weights)
@@ -354,7 +430,7 @@ type CovarianceCoordinateDescent{T,Intercept,S<:CoefficientIterator} <: Coordina
     maxncoef::Int                 # maximum number of coefficients
     tol::T                        # tolerance
 
-    function CovarianceCoordinateDescent(X::Matrix{T}, α::T, maxncoef::Int, tol::T, coefiter::S)
+    function CovarianceCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefiter::S)
         new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Array(T, size(X, 2)),
             Array(T, size(X, 2)), Array(T, maxncoef, size(X, 2)), Array(T, size(X, 1)),
             Array(T, size(X, 1)), convert(T, NaN), coefiter, convert(T, NaN), α,
@@ -362,7 +438,13 @@ type CovarianceCoordinateDescent{T,Intercept,S<:CoefficientIterator} <: Coordina
     end
 end
 
-# Compute XtX = (X .- μX)'(weights.*(X[:, icoef] - μX[icoef]))
+# Compute:
+# XtX = (X .- μX')'*(weights.*(X[:, icoef] - μX[icoef]))
+#     = X'*(weights.*(X[:, icoef] - μX[icoef])) - μX*weights'*(X[:, icoef] - μX[icoef])
+#     = X'*(weights.*(X[:, icoef] - μX[icoef]))
+# since weights'*(X[:, icoef] - μX[icoef])
+#       = \sum_{i=1}^n w*(X_{i, icoef} - \frac{\sum_{j=1}^n X_{j, icoef} w_j}{\sum_{j=1}^n w})
+#       = 0
 #
 # This must be called for all icoef < icoef before it may be called
 # for a given icoef
@@ -370,9 +452,8 @@ function computeXtX!{T,Intercept}(cd::CovarianceCoordinateDescent{T,Intercept},
                                   coef::SparseCoefficients{T}, icoef::Int, ipred::Int)
     @extractfields cd X tmp weights XtX μX
 
-    μ = Intercept ? μX[ipred] : zero(T)
-    @simd for i = 1:size(cd.X, 1)
-        @inbounds tmp[i] = (X[i, ipred] - μ)*weights[i]
+    @simd for i = 1:size(X, 1)
+        @inbounds tmp[i] = X[i, ipred]*weights[i]
     end
 
     @inbounds for jpred = 1:size(X, 2)
@@ -395,11 +476,98 @@ function computeXtX!{T,Intercept}(cd::CovarianceCoordinateDescent{T,Intercept},
     cd
 end
 
+# In the sparse case, we actually compute:
+# XtX = X'*(weights.*X[:, icoef]) - μX*μX[icoef]*sum(weights)
+#
+# TODO: Can this be done efficiently without making X[:, icoef] dense?
+# TODO: Can this be done efficiently with a sparse XtX, e.g by
+#       saving only the first term above? Storage may be a problem.
+function computeXtX!{T,Intercept,M<:SparseMatrixCSC}(cd::CovarianceCoordinateDescent{T,Intercept,M},
+                                                     coef::SparseCoefficients{T}, icoef::Int, ipred::Int)
+    @extractfields cd X tmp weights weightsum XtX μX
+    @extractfields X colptr rowval nzval
+
+    fill!(tmp, zero(T))
+    μi = Intercept ? μX[ipred] : zero(T)
+    @inbounds @simd for i = colptr[ipred]:colptr[ipred+1]-1
+        tmp[rowval[i]] = nzval[i]*weights[rowval[i]]
+    end
+
+    @inbounds for jpred = 1:size(X, 2)
+        if jpred == ipred
+            XtX[icoef, jpred] = cd.Xssq[jpred] # + abs2(μi)*weightsum
+        else
+            jcoef = coef.predictor2coef[jpred]
+            if 0 < jcoef < icoef
+                XtX[icoef, jpred] = XtX[jcoef, ipred]
+            else
+                s = zero(T)
+                @simd for i = colptr[jpred]:colptr[jpred+1]-1
+                    @inbounds s += tmp[rowval[i]]*nzval[i]
+                end
+                μj = Intercept ? μX[jpred] : zero(T)
+                XtX[icoef, jpred] = s - μi*μj*weightsum
+            end
+        end
+    end
+    cd
+end
+
+# Compute yty
+function computeyty!{T,Intercept,M}(cd::CovarianceCoordinateDescent{T,Intercept,M}, y::Vector{T})
+    @extractfields cd X weights
+    μy = Intercept ? cd.μy : zero(T)
+    yty = zero(T)
+    @inbounds @simd for i = 1:length(y)
+        yty += abs2(y[i] - μy)*weights[i]
+    end
+    cd.yty = yty
+    cd
+end
+
+# Compute Xssq and Xty for given predictor, with mean subtracted if
+# there is an intercept.
+function computeXssqXty{T,Intercept}(cd::CovarianceCoordinateDescent{T,Intercept}, y::Vector{T}, ipred::Int)
+    @extractfields cd X μy weights
+    μ = Intercept ? cd.μX[ipred] : zero(T)
+    ssq = zero(T)
+    ty = zero(T)
+    @inbounds @simd for i = 1:size(X, 1)
+        ssq += abs2(X[i, ipred] - μ)*weights[i]
+        ty += (y[i] - μy)*(X[i, ipred] - μ)*weights[i]
+    end
+    (ssq, ty)
+end
+
+function computeXssqXty{T,Intercept,M<:SparseMatrixCSC}(cd::CovarianceCoordinateDescent{T,Intercept,M}, y::Vector{T}, ipred::Int)
+    @extractfields cd X μy weights weightsum
+    @extractfields X rowval nzval colptr
+    μ = Intercept ? cd.μX[ipred] : zero(T)
+    ssq = zero(T)
+    ty = zero(T)
+
+    zeroweightsum = weightsum
+    zeroweighty = zero(T)
+    @inbounds @simd for i = colptr[ipred]:colptr[ipred+1]-1
+        row = rowval[i]
+        ssq += abs2(nzval[i] - μ)*weights[row]
+        ty += (y[row] - μy)*weights[row]*(nzval[i] - μ)
+        zeroweightsum -= weights[row]
+        zeroweighty -= (y[row] - μy)*weights[row]
+    end
+
+    # Correct for zero values
+    ssq += abs2(μ)*zeroweightsum
+    ty -= μ*zeroweighty
+
+    (ssq, ty)
+end
+
 # Updates CoordinateDescent object with (possibly) new y vector and
 # weights
-function update!{T,Intercept}(cd::CovarianceCoordinateDescent{T,Intercept},
-                              coef::SparseCoefficients{T}, y::Vector{T}, wt::Vector{T})
-    @extractfields cd X Xty μX Xssq XtX weights
+function update!{T,Intercept,M}(cd::CovarianceCoordinateDescent{T,Intercept,M},
+                                coef::SparseCoefficients{T}, y::Vector{T}, wt::Vector{T})
+    @extractfields cd X Xty μX Xssq weights
 
     copy!(weights, wt)
     weightsum = cd.weightsum = sum(weights)
@@ -415,34 +583,17 @@ function update!{T,Intercept}(cd::CovarianceCoordinateDescent{T,Intercept},
         cd.μy = μy
     end
 
+    computeyty!(cd, y)
+
+    if Intercept
+        # Compute weighted mean
+        computeμX!(cd)
+    end
+
+    # Compute Xssq and X'y
     for j = 1:size(X, 2)
-        μ = zero(T)
-        if Intercept
-            # Compute weighted mean
-            @inbounds @simd for i = 1:size(X, 1)
-                μ += X[i, j]*weights[i]
-            end
-            μ *= weightsuminv
-            μX[j] = μ
-        end
-
-        # Compute Xssq and X'y
-        ws = zero(T)
-        v = zero(T)
-        @inbounds @simd for i = 1:size(X, 1)
-            ws += abs2(X[i, j] - μ)*weights[i]
-            v += (y[i] - μy)*(X[i, j] - μ)*weights[i]
-        end
-        Xssq[j] = ws
-        Xty[j] = v
+        Xssq[j], Xty[j] = computeXssqXty(cd, y, j)
     end
-
-    # Compute y'y
-    yty = zero(T)
-    @simd for i = 1:length(y)
-        @inbounds yty += abs2(y[i] - μy)*weights[i]
-    end
-    cd.yty = yty
 
     # Compute X'X for predictors in model
     for icoef = 1:nnz(coef)
@@ -452,10 +603,13 @@ function update!{T,Intercept}(cd::CovarianceCoordinateDescent{T,Intercept},
     cd
 end
 
-function compute_gradient(XtX, coef, ipred)
-    s = 0.0
+# This is abstracted out in case someday we want to make XtX sparse
+getXtX(::CovarianceCoordinateDescent, XtX, jcoef, ipred) = XtX[jcoef, ipred]
+
+function compute_gradient{T}(cd::CovarianceCoordinateDescent{T}, XtX, coef, ipred)
+    s = zero(T)
     @simd for jcoef = 1:nnz(coef)
-        @inbounds s += XtX[jcoef, ipred]*coef.coef[jcoef]
+        @inbounds s += getXtX(cd, XtX, jcoef, ipred)*coef.coef[jcoef]
     end
     s
 end
@@ -468,12 +622,12 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
     if all
         @inbounds for ipred = 1:length(Xty)
             # Use all predictors for first and last iterations
-            s = Xty[ipred] - compute_gradient(XtX, coef, ipred)
+            s = Xty[ipred] - compute_gradient(cd, XtX, coef, ipred)
 
             icoef = coef.predictor2coef[ipred]
             if icoef != 0
                 oldcoef = coef.coef[icoef]
-                s += XtX[icoef, ipred]*oldcoef
+                s += getXtX(cd, XtX, icoef, ipred)*oldcoef
             else
                 oldcoef = zero(T)
             end
@@ -500,7 +654,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
             ipred = coef.coef2predictor[icoef]
             oldcoef = coef.coef[icoef]
             oldcoef == 0 && continue
-            s = Xty[ipred] + XtX[icoef, ipred]*oldcoef - compute_gradient(XtX, coef, ipred)
+            s = Xty[ipred] + getXtX(cd, XtX, icoef, ipred)*oldcoef - compute_gradient(cd, XtX, coef, ipred)
             newcoef = coef.coef[icoef] = S(s, λ*α)/(Xssq[ipred] + λ*(1 - α))
             maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[ipred])
         end
@@ -515,7 +669,7 @@ function ssr{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{T})
     v = cd.yty
     @inbounds for icoef = 1:nnz(coef)
         ipred = coef.coef2predictor[icoef]
-        s = -2*Xty[ipred] + compute_gradient(XtX, coef, ipred)
+        s = -2*Xty[ipred] + compute_gradient(cd, XtX, coef, ipred)
         v += coef.coef[icoef]*s
     end
     v
@@ -872,7 +1026,7 @@ function computeλ(Xy, λminratio, α, nλ)
 end
 
 function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
-                                                     X::Matrix{T}, y::V, d::UnivariateDistribution=Normal(),
+                                                     X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
                                                      l::Link=canonicallink(d);
                                                      wts::Union(FPVector, Nothing)=ones(T, length(y)),
                                                      offset::V=similar(y, 0),
@@ -890,7 +1044,7 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
 
     # Standardize predictors if requested
     if standardize
-        Xnorm = vec(std(X, 1, corrected=false))
+        Xnorm = vec(full(std(X, 1, corrected=false)))
         for i = 1:length(Xnorm)
             @inbounds Xnorm[i] = 1/Xnorm[i]
         end
@@ -903,8 +1057,8 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
     α = convert(T, α)
     λminratio = convert(T, λminratio)
     coefitr = randomize ? RandomCoefficientIterator() : (1:0)
-    cd = naivealgorithm ? NaiveCoordinateDescent{T,intercept,typeof(coefitr)}(X, α, maxncoef, 1e-7, coefitr) :
-                          CovarianceCoordinateDescent{T,intercept,typeof(coefitr)}(X, α, maxncoef, 1e-7, coefitr)
+    cd = naivealgorithm ? NaiveCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, 1e-7, coefitr) :
+                          CovarianceCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, 1e-7, coefitr)
 
     # GLM response initialization
     autoλ = λ == nothing
