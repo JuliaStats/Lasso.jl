@@ -6,13 +6,13 @@ Lasso paths
     Fits a linear or generalized linear Lasso path given the design
     matrix `X` and response `y`:
 
-    .. math:: \underset{\beta}{\operatorname{argmin}} \frac{1}{N} \mathcal{L}(y|X,\beta) + (1-\alpha)\frac{1}{2}\|\beta\|_2^2 + \alpha\|\beta\|_1
+    .. math:: \underset{\beta}{\operatorname{argmin}} -\frac{1}{N} \mathcal{L}(y|X,\beta) + (1-\alpha)\frac{1}{2}\|\beta\|_2^2 + \alpha\|\beta\|_1
 
     The optional argument `d` specifies the conditional distribution of
     response, while `l` specifies the link function. Lasso.jl inherits
     supported distributions and link functions from GLM.jl. The default
     is to fit an linear Lasso path, i.e., `d=Normal(), l=IdentityLink()`, 
-    or :math:`\mathcal{L}(y|X,\beta) = \frac{1}{2}\|y - X\beta|_2^2`
+    or :math:`\mathcal{L}(y|X,\beta) = \frac{1}{2}\|y - X\beta\|_2^2`
 
     **Keyword arguments:**
 
