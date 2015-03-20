@@ -19,7 +19,7 @@ Fused Lasso and trend filtering
 
     Fits the trend filter model:
 
-    .. math:: \underset{\beta}{\operatorname{argmin}} \frac{1}{2} \sum_{k=1}^N(y_k - \beta_k)^2 + \lambda \|D^{(k+1)}\beta_k\|
+    .. math:: \underset{\beta}{\operatorname{argmin}} \frac{1}{2} \sum_{k=1}^N(y_k - \beta_k)^2 + \lambda \|D^{(k+1)}\beta_k\|_1
 
     Where :math:`D^{(k+1)}` is the discrete difference operator of
     order k+1. The model coefficients can be obtained by calling
