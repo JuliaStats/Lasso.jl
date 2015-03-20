@@ -12,7 +12,7 @@ Lasso paths
     response, while `l` specifies the link function. Lasso.jl inherits
     supported distributions and link functions from GLM.jl. The default
     is to fit an linear Lasso path, i.e., `d=Normal(), l=IdentityLink()`, 
-    or :math:`\mathcal{L}(y|X,\beta) = \frac{1}{2}\|y - X\beta\|_2^2`
+    or :math:`\mathcal{L}(y|X,\beta) = -\frac{1}{2}\|y - X\beta\|_2^2`
 
     **Keyword arguments:**
 
