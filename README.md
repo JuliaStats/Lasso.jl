@@ -52,7 +52,6 @@ More documentation is available at [ReadTheDocs](http://lassojl.readthedocs.org/
 
  - User-specified weights are untested
  - Support unpenalized variables besides the intercept
- - Sparse matrix and custom AbstractMatrix support
  - Maybe integrate LARS.jl
 
 ## See also
