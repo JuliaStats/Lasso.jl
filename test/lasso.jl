@@ -40,7 +40,7 @@ facts("LassoPath") do
                             for alpha = [1, 0.5]
                                 context("alpha = $alpha") do
                                     for offset = Vector{Float64}[Float64[], yoff]
-                                        context("$(isempty(offset) ? "w/" : "w/o") offset") do
+                                        context("$(isempty(offset) ? "w/o" : "w/") offset") do
                                             # First fit with GLMNet
                                             if isa(dist, Normal)
                                                 yp = isempty(offset) ? y : y + offset
@@ -50,15 +50,15 @@ facts("LassoPath") do
                                                 yp ./= ypstd
                                                 !isempty(offset) && (offset ./= ypstd)
                                                 y ./= ypstd
-                                                g = glmnet(X, yp, dist, intercept=intercept, alpha=alpha, tol=eps())
+                                                g = glmnet(X, yp, dist, intercept=intercept, alpha=alpha, tol=10*eps())
                                             elseif isa(dist, Binomial)
                                                 yp = zeros(size(y, 1), 2)
                                                 yp[:, 1] = y .== 0
                                                 yp[:, 2] = y .== 1
-                                                g = glmnet(X, yp, dist, intercept=intercept, alpha=alpha, tol=eps(),
+                                                g = glmnet(X, yp, dist, intercept=intercept, alpha=alpha, tol=10*eps(),
                                                            offsets=isempty(offset) ? zeros(length(y)) : offset)
                                             else
-                                                g = glmnet(X, y, dist, intercept=intercept, alpha=alpha, tol=eps(),
+                                                g = glmnet(X, y, dist, intercept=intercept, alpha=alpha, tol=10*eps(),
                                                            offsets=isempty(offset) ? zeros(length(y)) : offset)
                                             end
                                             gbeta = convert(Matrix{Float64}, g.betas)
@@ -73,7 +73,7 @@ facts("LassoPath") do
                                                                     # Now fit with Lasso
                                                                     l = fit(LassoPath, spfit ? sparse(X) : X, y, dist, link,
                                                                             λ=g.lambda, naivealgorithm=naivealgorithm, intercept=intercept,
-                                                                            cd_tol=eps(), irls_tol=eps(), criterion=:coef, randomize=randomize,
+                                                                            cd_tol=10*eps(), irls_tol=10*eps(), criterion=:coef, randomize=randomize,
                                                                             α=alpha, offset=offset)
 
                                                                     # rd = (l.coefs - gbeta)./gbeta
