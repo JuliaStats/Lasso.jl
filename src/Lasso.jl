@@ -438,13 +438,62 @@ type CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIte
     end
 end
 
+# Compute y'y
+function computeyty{T,Intercept,M}(cd::CovarianceCoordinateDescent{T,Intercept,M}, y::Vector{T})
+    @extractfields cd X weights
+    μy = Intercept ? cd.μy : zero(T)
+    yty = zero(T)
+    @inbounds @simd for i = 1:length(y)
+        yty += abs2(y[i] - μy)*weights[i]
+    end
+    yty
+end
+
+# Compute Xssq and Xty for given predictor, with mean subtracted if
+# there is an intercept.
+function computeXssqXty{T,Intercept}(cd::CovarianceCoordinateDescent{T,Intercept}, y::Vector{T}, ipred::Int)
+    @extractfields cd X μy weights
+    μ = Intercept ? cd.μX[ipred] : zero(T)
+    ssq = zero(T)
+    ty = zero(T)
+    @inbounds @simd for i = 1:size(X, 1)
+        ssq += abs2(X[i, ipred] - μ)*weights[i]
+        ty += (y[i] - μy)*(X[i, ipred] - μ)*weights[i]
+    end
+    (ssq, ty)
+end
+
+function computeXssqXty{T,Intercept,M<:SparseMatrixCSC}(cd::CovarianceCoordinateDescent{T,Intercept,M}, y::Vector{T}, ipred::Int)
+    @extractfields cd X μy weights weightsum
+    @extractfields X rowval nzval colptr
+    μ = Intercept ? cd.μX[ipred] : zero(T)
+    ssq = zero(T)
+    ty = zero(T)
+
+    zeroweightsum = weightsum
+    zeroweighty = zero(T)
+    @inbounds @simd for i = colptr[ipred]:colptr[ipred+1]-1
+        row = rowval[i]
+        ssq += abs2(nzval[i] - μ)*weights[row]
+        ty += (y[row] - μy)*weights[row]*(nzval[i] - μ)
+        zeroweightsum -= weights[row]
+        zeroweighty -= (y[row] - μy)*weights[row]
+    end
+
+    # Correct for zero values
+    ssq += abs2(μ)*zeroweightsum
+    ty -= μ*zeroweighty
+
+    (ssq, ty)
+end
+
 # Compute:
 # XtX = (X .- μX')'*(weights.*(X[:, icoef] - μX[icoef]))
 #     = X'*(weights.*(X[:, icoef] - μX[icoef])) - μX*weights'*(X[:, icoef] - μX[icoef])
 #     = X'*(weights.*(X[:, icoef] - μX[icoef]))
-# since weights'*(X[:, icoef] - μX[icoef])
-#       = \sum_{i=1}^n w*(X_{i, icoef} - \frac{\sum_{j=1}^n X_{j, icoef} w_j}{\sum_{j=1}^n w})
-#       = 0
+# since μX'*weights'*(X[:, icoef] - μX[icoef])
+#     = \sum_{i=1}^n w*(X_{i, icoef} - \frac{\sum_{j=1}^n X_{j, icoef} w_j}{\sum_{j=1}^n w})
+#     = 0
 #
 # This must be called for all icoef < icoef before it may be called
 # for a given icoef
@@ -513,56 +562,6 @@ function computeXtX!{T,Intercept,M<:SparseMatrixCSC}(cd::CovarianceCoordinateDes
     cd
 end
 
-# Compute yty
-function computeyty!{T,Intercept,M}(cd::CovarianceCoordinateDescent{T,Intercept,M}, y::Vector{T})
-    @extractfields cd X weights
-    μy = Intercept ? cd.μy : zero(T)
-    yty = zero(T)
-    @inbounds @simd for i = 1:length(y)
-        yty += abs2(y[i] - μy)*weights[i]
-    end
-    cd.yty = yty
-    cd
-end
-
-# Compute Xssq and Xty for given predictor, with mean subtracted if
-# there is an intercept.
-function computeXssqXty{T,Intercept}(cd::CovarianceCoordinateDescent{T,Intercept}, y::Vector{T}, ipred::Int)
-    @extractfields cd X μy weights
-    μ = Intercept ? cd.μX[ipred] : zero(T)
-    ssq = zero(T)
-    ty = zero(T)
-    @inbounds @simd for i = 1:size(X, 1)
-        ssq += abs2(X[i, ipred] - μ)*weights[i]
-        ty += (y[i] - μy)*(X[i, ipred] - μ)*weights[i]
-    end
-    (ssq, ty)
-end
-
-function computeXssqXty{T,Intercept,M<:SparseMatrixCSC}(cd::CovarianceCoordinateDescent{T,Intercept,M}, y::Vector{T}, ipred::Int)
-    @extractfields cd X μy weights weightsum
-    @extractfields X rowval nzval colptr
-    μ = Intercept ? cd.μX[ipred] : zero(T)
-    ssq = zero(T)
-    ty = zero(T)
-
-    zeroweightsum = weightsum
-    zeroweighty = zero(T)
-    @inbounds @simd for i = colptr[ipred]:colptr[ipred+1]-1
-        row = rowval[i]
-        ssq += abs2(nzval[i] - μ)*weights[row]
-        ty += (y[row] - μy)*weights[row]*(nzval[i] - μ)
-        zeroweightsum -= weights[row]
-        zeroweighty -= (y[row] - μy)*weights[row]
-    end
-
-    # Correct for zero values
-    ssq += abs2(μ)*zeroweightsum
-    ty -= μ*zeroweighty
-
-    (ssq, ty)
-end
-
 # Updates CoordinateDescent object with (possibly) new y vector and
 # weights
 function update!{T,Intercept,M}(cd::CovarianceCoordinateDescent{T,Intercept,M},
@@ -583,7 +582,7 @@ function update!{T,Intercept,M}(cd::CovarianceCoordinateDescent{T,Intercept,M},
         cd.μy = μy
     end
 
-    computeyty!(cd, y)
+    cd.yty = computeyty(cd, y)
 
     if Intercept
         # Compute weighted mean
