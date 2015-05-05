@@ -1,6 +1,7 @@
 # Lasso
 
-[![Build Status](https://travis-ci.org/simonster/Lasso.jl.png)](https://travis-ci.org/simonster/Lasso.jl)
+[![Build Status](https://travis-ci.org/simonster/Lasso.jl.svg?branch=master)](https://travis-ci.org/simonster/Lasso.jl)
+[![Coverage Status](https://coveralls.io/repos/simonster/Lasso.jl/badge.svg?branch=master)](https://coveralls.io/r/simonster/Lasso.jl?branch=master)
 
 Lasso.jl is a pure Julia implementation of the glmnet coordinate
 descent algorithm for fitting linear and generalized linear Lasso and
