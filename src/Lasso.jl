@@ -52,7 +52,7 @@ Base.nnz(x::SparseCoefficients) = length(x.coef)
 Base.getindex{T}(x::SparseCoefficients{T}, ipred::Int) =
     x.predictor2coef[ipred] == 0 ? zero(T) : x.coef[x.predictor2coef[ipred]]
 
-function Base.setindex!{T}(A::Matrix{T}, coef::SparseCoefficients, rg::Range1{Int}, i::Int)
+function Base.setindex!{T}(A::Matrix{T}, coef::SparseCoefficients, rg::UnitRange{Int}, i::Int)
     A[:, i] = zero(T)
     for icoef = 1:nnz(coef)
         A[rg[coef.coef2predictor[icoef]], i] = coef.coef[icoef]
