@@ -6,7 +6,7 @@ Lasso paths
     Fits a linear or generalized linear Lasso path given the design
     matrix `X` and response `y`:
 
-    .. math:: \underset{\beta}{\operatorname{argmin}} -\frac{1}{N} \mathcal{L}(y|X,\beta) + (1-\alpha)\frac{1}{2}\|\beta\|_2^2 + \alpha\|\beta\|_1
+    .. math:: \underset{\beta}{\operatorname{argmin}} -\frac{1}{N} \mathcal{L}(y|X,\beta) + \lambda\left[(1-\alpha)\frac{1}{2}\|\beta\|_2^2 + \alpha\|\beta\|_1\right]
 
     The optional argument `d` specifies the conditional distribution of
     response, while `l` specifies the link function. Lasso.jl inherits
