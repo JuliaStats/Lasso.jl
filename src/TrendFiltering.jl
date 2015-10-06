@@ -1,5 +1,6 @@
 module TrendFiltering
 using StatsBase, ..FusedLassoMod, ..Util
+import Base: +, -, *
 export TrendFilter
 
 # Implements the algorithm from Ramdas, A., & Tibshirani, R. J. (2014).

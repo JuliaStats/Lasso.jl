@@ -19,9 +19,9 @@ randdist(::Binomial, x) = rand(Bernoulli(x))
 randdist(::Poisson, x) = rand(Poisson(x))
 function genrand(T::DataType, d::Distribution, l::GLM.Link, nsamples::Int, nfeatures::Int, sparse::Bool)
     X, coef = makeX(0.0, nsamples, nfeatures, sparse)
-    y = linkinv!(l, Array(T, nsamples), X*coef)
+    y = X*coef
     for i = 1:length(y)
-        y[i] = randdist(d, y[i])
+        y[i] = randdist(d, linkinv(l, y[i]))
     end
     (X, y)
 end
@@ -82,14 +82,14 @@ facts("LassoPath") do
                                                                     # rd = (l.b0 - g.a0)./g.a0
                                                                     # rd[!isfinite(rd)] = 0
                                                                     # println("         b0    adiff = $(maxabs(l.b0 - g.a0)) rdiff = $(maxabs(rd))")
-                                                                    @fact l.coefs => roughly(gbeta, 2e-7)
-                                                                    @fact l.b0 => roughly(g.a0, 2e-7)
+                                                                    @fact l.coefs --> roughly(gbeta, 5e-7)
+                                                                    @fact l.b0 --> roughly(g.a0, 2e-5)
 
                                                                     # Ensure same number of iterations with all algorithms
                                                                     if niter == 0
                                                                         niter = l.niter
                                                                     else
-                                                                        @fact l.niter => niter
+                                                                        @fact l.niter --> niter
                                                                     end
                                                                 end
                                                             end

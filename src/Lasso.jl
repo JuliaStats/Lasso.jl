@@ -1,4 +1,5 @@
 module Lasso
+using Compat
 module Util
     # Extract fields from object into function locals
     # See https://github.com/JuliaLang/julia/issues/9755
@@ -34,6 +35,19 @@ function Base.A_mul_B!{T}(out::Vector, X::Matrix, coef::SparseCoefficients{T})
         c = coef.coef[icoef]
         @simd for i = 1:size(X, 1)
             out[i] += c*X[i, ipred]
+        end
+    end
+    out
+end
+
+function Base.A_mul_B!{T}(out::Vector, X::SparseMatrixCSC, coef::SparseCoefficients{T})
+    @extractfields X colptr rowval nzval
+    fill!(out, zero(eltype(out)))
+    @inbounds for icoef = 1:nnz(coef)
+        ipred = coef.coef2predictor[icoef]
+        c = coef.coef[icoef]
+        @simd for i = colptr[ipred]:colptr[ipred+1]-1
+            out[rowval[i]] += c*nzval[i]
         end
     end
     out
@@ -109,7 +123,7 @@ if VERSION >= v"0.4-dev+1915"
     # iteration quickly.
     immutable RandomCoefficientIterator
         rng::MersenneTwister
-        rg::Base.Random.RangeGeneratorInt{Int,Uint}
+        rg::Base.Random.RangeGeneratorInt{Int,@compat UInt}
         coeforder::Vector{Int}
     end
     const RANDOMIZE_DEFAULT = true
@@ -123,7 +137,7 @@ else
     const RANDOMIZE_DEFAULT = false
 end
 
-typealias CoefficientIterator Union(UnitRange{Int}, RandomCoefficientIterator)
+typealias CoefficientIterator @compat Union{UnitRange{Int},RandomCoefficientIterator}
 
 # Iterate over coefficients in random order
 function Base.start(x::RandomCoefficientIterator)
@@ -147,7 +161,7 @@ addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
 
 ## LASSO PATH
 
-type LassoPath{S<:Union(LinearModel, GeneralizedLinearModel),T} <: RegressionModel
+type LassoPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel}),T} <: RegressionModel
     m::S
     nulldev::T                    # null deviance
     nullb0::T                     # intercept of null model, if one was fit
@@ -196,14 +210,14 @@ function computeλ(Xy, λminratio, α, nλ)
     λ = exp(linspace(logλmax, logλmax + log(λminratio), nλ))
 end
 
-function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
+function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
                                                      X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
                                                      l::Link=canonicallink(d);
-                                                     wts::Union(FPVector, Nothing)=ones(T, length(y)),
+                                                     wts::@compat(Union{FPVector,Void})=ones(T, length(y)),
                                                      offset::V=similar(y, 0),
                                                      α::Number=one(eltype(y)), nλ::Int=100,
                                                      λminratio::Number=ifelse(size(X, 1) < size(X, 2), 0.01, 1e-4),
-                                                     λ::Union(Vector,Nothing)=nothing, standardize::Bool=true,
+                                                     λ::@compat(Union{Vector,Void})=nothing, standardize::Bool=true,
                                                      intercept::Bool=true,
                                                      naivealgorithm::Bool=(!isa(d, Normal) || !isa(l, IdentityLink) || size(X, 2) > 5*size(X, 1)),
                                                      dofit::Bool=true,
@@ -280,20 +294,8 @@ function StatsBase.fit{T<:FloatingPoint,V<:FPVector}(::Type{LassoPath},
             nullb0 = zero(T)
         end
 
-        mu = mustart(d, y, wts)
-        eta = linkfun!(l, similar(mu), mu)
-        if !isempty(off)
-            @simd for i = 1:length(eta)
-                @inbounds eta[i] -= off[i]
-            end
-        end
-
-        if length(GlmResp.parameters) == 3
-            # a hack so this works with my hacked up working copy of GLM
-            rr = GlmResp{typeof(y),typeof(d),typeof(l)}(y, d, l, eta, mu, offset, wts)
-        else
-            rr = GlmResp{typeof(y)}(y, d, l, eta, mu, offset, wts)
-        end
+        eta = GLM.initialeta!(d, l, similar(y), y, wts, off)
+        rr = GlmResp{typeof(y),typeof(d),typeof(l)}(y, d, l, eta, similar(eta), offset, wts)
         model = GeneralizedLinearModel(rr, cd, false)
     end
 

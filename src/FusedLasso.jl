@@ -1,5 +1,6 @@
 module FusedLassoMod
 using StatsBase
+import Base: +, -, *
 export FusedLasso
 
 # Implements the algorithm described in Johnson, N. A. (2013). A
