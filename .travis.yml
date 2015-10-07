@@ -9,9 +9,9 @@ notifications:
   email: false
 before_install:
   - if [ `uname` = "Linux" ]; then
-      sudo apt-get install gfortran -y
+      sudo apt-get install gfortran -y;
     elif [ `uname` = "Darwin" ]; then
-      brew install gcc
+      brew install gcc;
     fi
 script:
   - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
