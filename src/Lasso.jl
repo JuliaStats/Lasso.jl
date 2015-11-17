@@ -237,6 +237,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
     else
         Xnorm = T[]
     end
+
     # Lasso initialization
     α = convert(T, α)
     tol = convert(T, 1e-7)
