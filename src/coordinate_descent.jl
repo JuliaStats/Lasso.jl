@@ -567,7 +567,9 @@ end
 function cdfit!{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T}, λ, criterion)
     maxiter = cd.maxiter
     tol = cd.tol
+    α = cd.α
     n = size(cd.X, 1)
+
     obj = convert(T, Inf)
     objold = convert(T, Inf)
     dev = convert(T, Inf)
