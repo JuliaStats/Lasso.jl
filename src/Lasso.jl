@@ -245,6 +245,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
     coefitr = randomize ? RandomCoefficientIterator() : (1:0)
     cd = naivealgorithm ? NaiveCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, tol, coefitr) :
                           CovarianceCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, tol, coefitr)
+
     # GLM response initialization
     autoλ = λ == nothing
     wts .*= convert(T, 1/sum(wts))
