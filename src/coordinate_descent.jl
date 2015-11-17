@@ -683,11 +683,14 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbo
                 # Compute working response
                 wrkresp!(scratchmu, eta, wrkresid, offset)
                 wrkwt = wrkwt!(r)
+
                 # Run coordinate descent inner loop
                 niter += cdfit!(newcoef, update!(cd, newcoef, scratchmu, wrkwt), curλ, criterion)
                 b0 = intercept(newcoef, cd)
+
                 # Update GLM and get deviance
                 updatemu!(r, linpred!(scratchmu, cd, newcoef, b0))
+
                 # Compute Elastic Net objective
                 objold = obj
                 dev = deviance(r)
