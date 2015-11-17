@@ -237,14 +237,13 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
     else
         Xnorm = T[]
     end
-
     # Lasso initialization
     α = convert(T, α)
+    tol = convert(T, 1e-7)
     λminratio = convert(T, λminratio)
     coefitr = randomize ? RandomCoefficientIterator() : (1:0)
-    cd = naivealgorithm ? NaiveCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, 1e-7, coefitr) :
-                          CovarianceCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, 1e-7, coefitr)
-
+    cd = naivealgorithm ? NaiveCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, tol, coefitr) :
+                          CovarianceCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, tol, coefitr)
     # GLM response initialization
     autoλ = λ == nothing
     wts .*= convert(T, 1/sum(wts))
