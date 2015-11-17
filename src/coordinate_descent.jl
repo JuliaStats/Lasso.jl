@@ -568,7 +568,6 @@ function cdfit!{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T}, λ, cr
     maxiter = cd.maxiter
     tol = cd.tol
     n = size(cd.X, 1)
-
     obj = convert(T, Inf)
     objold = convert(T, Inf)
     dev = convert(T, Inf)
@@ -682,24 +681,21 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbo
                 # Compute working response
                 wrkresp!(scratchmu, eta, wrkresid, offset)
                 wrkwt = wrkwt!(r)
-
                 # Run coordinate descent inner loop
                 niter += cdfit!(newcoef, update!(cd, newcoef, scratchmu, wrkwt), curλ, criterion)
                 b0 = intercept(newcoef, cd)
-
                 # Update GLM and get deviance
                 updatemu!(r, linpred!(scratchmu, cd, newcoef, b0))
-
                 # Compute Elastic Net objective
                 objold = obj
                 dev = deviance(r)
                 obj = dev/2 + curλ*P(α, newcoef)
 
                 if obj > objold + length(scratchmu)*eps(objold)
-                    f = 1.0
+                    f = convert(T, 1.)
                     b0diff = b0 - oldb0
                     while obj > objold
-                        f /= 2.; f > minStepFac || error("step-halving failed at beta = $(newcoef)")
+                        f /= convert(T, 2.); f > minStepFac || error("step-halving failed at beta = $(newcoef)")
                         for icoef = 1:nnz(newcoef)
                             oldcoefval = icoef > nnz(oldcoef) ? zero(T) : oldcoef.coef[icoef]
                             newcoef.coef[icoef] = oldcoefval+f*(newcoef.coef[icoef] - oldcoefval)
