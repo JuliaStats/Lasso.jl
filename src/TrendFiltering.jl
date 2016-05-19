@@ -156,8 +156,8 @@ function StatsBase.fit{T}(::Type{TrendFilter}, y::AbstractVector{T}, order, λ; 
     Dk = DifferenceMatrix{T}(order-1, length(y))
     β = zeros(T, length(y))
     u = zeros(T, size(Dk, 1))
-    Dkp1β = zeros(T, size(Dkp1, 1))
-    Dkβ = pointer_to_array(pointer(Dkp1β), size(Dk, 1))
+    Dkβ = zeros(T, size(Dk, 1))
+    Dkp1β = pointer_to_array(pointer(Dkβ), size(Dkp1, 1))
     tf = TrendFilter(Dkp1, Dk, Dk'Dk, β, u, Dkβ, Dkp1β, fit(FusedLasso, Dkβ, λ; dofit=false), -1)
     dofit && fit!(tf, y, λ; args...)
     return tf
