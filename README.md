@@ -47,6 +47,11 @@ To fit a polynomial trend filtering model:
 fit(TrendFilter, y, order, λ)
 ```
 
+To fit a gamma lasso path:
+
+```julia
+fit(GammaLassoPath, X, y, dist, link; gamma=1.0)
+```
 More documentation is available at [ReadTheDocs](http://lassojl.readthedocs.org/en/latest/).
 
 ## TODO
