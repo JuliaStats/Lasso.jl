@@ -28,6 +28,8 @@ immutable SparseCoefficients{T} <: AbstractVector{T}
     SparseCoefficients(n::Int) = new(T[], Int[], zeros(Int, n))
 end
 
+include("sparse.jl")
+
 function Base.A_mul_B!{T}(out::Vector, X::Matrix, coef::SparseCoefficients{T})
     fill!(out, zero(eltype(out)))
     @inbounds for icoef = 1:nnz(coef)
@@ -178,7 +180,7 @@ type LassoPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel}),T} <: Regre
 end
 
 function Base.show(io::IO, path::LassoPath)
-    prefix = isa(path.m, GeneralizedLinearModel) ? string(typeof(path.m.rr.d).name.name, " ") : "" 
+    prefix = isa(path.m, GeneralizedLinearModel) ? string(typeof(path.m.rr.d).name.name, " ") : ""
     println(io, prefix*"Lasso Solution Path ($(size(path.coefs, 2)) solutions for $(size(path.coefs, 1)) predictors in $(path.niter) iterations):")
 
     coefs = path.coefs
@@ -222,7 +224,8 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
                                                      naivealgorithm::Bool=(!isa(d, Normal) || !isa(l, IdentityLink) || size(X, 2) > 5*size(X, 1)),
                                                      dofit::Bool=true,
                                                      irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
-                                                     maxncoef::Int=min(size(X, 2), 2*size(X, 1)), fitargs...)
+                                                     maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
+                                                     penalty_factor::@compat(Union{Vector,Void})=nothing, fitargs...)
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
     n = length(y)
     length(wts) == n || error("length(wts) = $(length(wts)) should be 0 or $n")
@@ -242,8 +245,14 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
     α = convert(T, α)
     λminratio = convert(T, λminratio)
     coefitr = randomize ? RandomCoefficientIterator() : (1:0)
-    cd = naivealgorithm ? NaiveCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, 1e-7, coefitr) :
-                          CovarianceCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, 1e-7, coefitr)
+
+    # penalty_factor (ω) defaults to a sparse vector of ones
+    ω = (penalty_factor == nothing) ? SparseWeights{T}(size(X,2)) : convert(SparseWeights,penalty_factor)
+    # following glmnet rescale penalty factors to sum to the number of coefficients
+    ω = rescale(ω,size(X, 2))
+
+    cd = naivealgorithm ? NaiveCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, 1e-7, coefitr, ω) :
+                          CovarianceCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, 1e-7, coefitr, ω)
 
     # GLM response initialization
     autoλ = λ == nothing
