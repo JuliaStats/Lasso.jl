@@ -201,7 +201,7 @@ const MIN_DEV_FRAC_DIFF = 1e-5
 const MAX_DEV_FRAC = 0.999
 
 # Compute automatic λ values based on X'y and λminratio
-function computeλ(Xy, λminratio, α, nλ, nobs, ω::@compat(Union{Vector,SparseWeights,Void}))
+function computeλ(Xy, λminratio, α, nλ, ω::@compat(Union{Vector,SparseWeights,Void}))
     λmax = abs(Xy[1])
     if ω != nothing
         λmax /= ω[1]
@@ -289,7 +289,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
                 muscratch = mu.*wts
             end
             Xy = X'muscratch
-            λ = computeλ(Xy, λminratio, α, nλ, n, ω)
+            λ = computeλ(Xy, λminratio, α, nλ, ω)
         else
             λ = convert(Vector{T}, λ)
         end
@@ -306,7 +306,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
         if autoλ
             # Find max λ
             Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwts)
-            λ = computeλ(Xy, λminratio, α, nλ, n, ω)
+            λ = computeλ(Xy, λminratio, α, nλ, ω)
             nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
         else
             λ = convert(Vector{T}, λ)
