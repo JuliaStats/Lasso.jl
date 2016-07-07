@@ -39,4 +39,5 @@ function *{T}(A::SparseWeights{T},x::Real)
      B
 end
 
-rescale{T}(A::SparseWeights{T},base) = A * (base / sum(A))
+# rescales A so that it sums to base
+rescale(A,base) = A * (base / sum(A))

@@ -26,13 +26,20 @@ function genrand(T::DataType, d::Distribution, l::GLM.Link, nsamples::Int, nfeat
     (X, y)
 end
 
-function gen_penalty_factors(X,nonone_penalty_factors)
-    penalty_factor = ones(size(X,2))
+function gen_penalty_factors(X,nonone_penalty_factors,sparse_penalty_factors;sparcity=0.7)
     if nonone_penalty_factors
-        halfway = Int(floor(size(X,2)/2))
-        penalty_factor[1:halfway] = rand(Float64,halfway)
+        penalty_factor = ones(size(X,2))
+        nonone = Int(floor(size(X,2)*(1-sparcity)))
+        penalty_factor[1:nonone] = rand(Float64,nonone)
+        penalty_factor_glmnet = penalty_factor
+        if sparse_penalty_factors
+             penalty_factor = convert(SparseWeights,penalty_factor)
+        end
+    else
+        penalty_factor = nothing
+        penalty_factor_glmnet = ones(size(X,2))
     end
-    penalty_factor
+    penalty_factor, penalty_factor_glmnet
 end
 
 # Test against GLMNet
@@ -48,9 +55,9 @@ facts("LassoPath") do
                         context("$(intercept ? "w/" : "w/o") intercept") do
                             for alpha = [1, 0.5]
                                 context("alpha = $alpha") do
-                                    for nonone_penalty_factors = (false,true)
-                                        context("nonone_penalty_factors = $nonone_penalty_factors") do
-                                            penalty_factor = gen_penalty_factors(X,nonone_penalty_factors)
+                                    for (nonone_penalty_factors,sparse_penalty_factors) in ((false,false), (true,false), (true,true)) # (false,true) doesn't matter
+                                        context("$(nonone_penalty_factors ? "non-one" : "all-one"), $(sparse_penalty_factors ? "SparseWeights" : "Vector") penalty factors") do
+                                            penalty_factor, penalty_factor_glmnet = gen_penalty_factors(X,nonone_penalty_factors,sparse_penalty_factors)
                                             for offset = Vector{Float64}[Float64[], yoff]
                                                 context("$(isempty(offset) ? "w/o" : "w/") offset") do
                                                     # First fit with GLMNet
@@ -62,16 +69,16 @@ facts("LassoPath") do
                                                         yp ./= ypstd
                                                         !isempty(offset) && (offset ./= ypstd)
                                                         y ./= ypstd
-                                                        g = glmnet(X, yp, dist, intercept=intercept, alpha=alpha, tol=10*eps(); penalty_factor=penalty_factor)
+                                                        g = glmnet(X, yp, dist, intercept=intercept, alpha=alpha, tol=10*eps(); penalty_factor=penalty_factor_glmnet)
                                                     elseif isa(dist, Binomial)
                                                         yp = zeros(size(y, 1), 2)
                                                         yp[:, 1] = y .== 0
                                                         yp[:, 2] = y .== 1
                                                         g = glmnet(X, yp, dist, intercept=intercept, alpha=alpha, tol=10*eps(),
-                                                                   offsets=isempty(offset) ? zeros(length(y)) : offset; penalty_factor=penalty_factor)
+                                                                   offsets=isempty(offset) ? zeros(length(y)) : offset; penalty_factor=penalty_factor_glmnet)
                                                     else
                                                         g = glmnet(X, y, dist, intercept=intercept, alpha=alpha, tol=10*eps(),
-                                                                   offsets=isempty(offset) ? zeros(length(y)) : offset; penalty_factor=penalty_factor)
+                                                                   offsets=isempty(offset) ? zeros(length(y)) : offset; penalty_factor=penalty_factor_glmnet)
                                                     end
                                                     gbeta = convert(Matrix{Float64}, g.betas)
 
@@ -106,6 +113,7 @@ facts("LassoPath") do
                                                                                     if criterion==:obj
                                                                                         # nothing to compare results against at this point, we just make sure the code runs
                                                                                     else
+                                                                                        # @fact l.λ --> roughly(g.lambda, 5e-7)
                                                                                         @fact l.coefs --> roughly(gbeta, 5e-7)
                                                                                         @fact l.b0 --> roughly(g.a0, 2e-5)
 

@@ -2,16 +2,18 @@
 S(z, γ) = abs(z) <= γ ? zero(z) : ifelse(z > 0, z - γ, z + γ)
 
 # Elastic net penalty with parameter α and given coefficients
-function P{T}(α::T, β::SparseCoefficients{T}, ω::SparseWeights{T})
+function P{T}(α::T, β::SparseCoefficients{T}, ω::Void)
     x = zero(T)
-    if isalldefault(ω) # assumes default is one, otherwise λ would be used
-        @inbounds @simd for i = 1:nnz(β)
-            x += (1 - α)/2*abs2(β.coef[i]) + α*abs(β.coef[i])
-        end
-    else
-        @inbounds @simd for i = 1:nnz(β)
-            x += ω[β.coef2predictor[i]] * ((1 - α)/2*abs2(β.coef[i]) + α*abs(β.coef[i]))
-        end
+    @inbounds @simd for i = 1:nnz(β)
+        x += (1 - α)/2*abs2(β.coef[i]) + α*abs(β.coef[i])
+    end
+    x
+end
+
+function P{T}(α::T, β::SparseCoefficients{T}, ω::@compat(Union{SparseWeights{T},Vector{T}}))
+    x = zero(T)
+    @inbounds @simd for i = 1:nnz(β)
+        x += ω[β.coef2predictor[i]] * ((1 - α)/2*abs2(β.coef[i]) + α*abs(β.coef[i]))
     end
     x
 end
@@ -33,9 +35,9 @@ type NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator
     maxiter::Int                  # maximum number of iterations
     maxncoef::Int                 # maximum number of coefficients
     tol::T                        # tolerance
-    ω::SparseWeights{T}           # coefficient-specific penalty weights
+    ω::@compat(Union{SparseWeights{T},Vector{T},Void})   # coefficient-specific penalty weights
 
-    NaiveCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefitr::S, ω::SparseWeights{T}) =
+    NaiveCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefitr::S, ω::@compat(Union{SparseWeights{T},Vector{T},Void})) =
         new(X, zero(T), zeros(T, size(X, 2)), zeros(T, maxncoef), Array(T, size(X, 1)), zero(T),
             Array(T, size(X, 1)), Array(T, size(X, 1)), convert(T, NaN), coefitr, convert(T, NaN),
             α, typemax(Int), maxncoef, tol, ω)
@@ -217,6 +219,9 @@ end
     end
 end
 
+λω(λ,ω::Void,ipred::Int) = λ
+λω(λ,ω::@compat(Union{SparseWeights,Vector}),ipred::Int) = λ*ω[ipred]
+
 # Performs the cycle of all predictors
 function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, λ::T, all::Bool)
     @extractfields cd residuals X weights Xssq α ω
@@ -226,7 +231,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
         # Use all predictors for first and last iterations
         for ipred = 1:size(X, 2)
             v = compute_grad(cd, X, residuals, weights, ipred)
-            λωj = λ*ω[ipred]
+            λωj = λω(λ,ω,ipred)
 
             icoef = coef.predictor2coef[ipred]
             if icoef != 0
@@ -254,7 +259,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
             ipred = coef.coef2predictor[icoef]
 
             v = Xssq[icoef]*oldcoef + compute_grad(cd, X, residuals, weights, ipred)
-            λωj = λ*ω[ipred]
+            λωj = λω(λ,ω,ipred)
             newcoef = S(v, λωj*α)/(Xssq[icoef] + λωj*(1 - α))
 
             maxdelta = max(maxdelta, update_coef!(cd, coef, newcoef, icoef, ipred))
@@ -312,9 +317,9 @@ type CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIte
     maxiter::Int                  # maximum number of iterations
     maxncoef::Int                 # maximum number of coefficients
     tol::T                        # tolerance
-    ω::SparseWeights{T}           # coefficient-specific penalty weights
+    ω::@compat(Union{SparseWeights{T},Vector{T},Void})           # coefficient-specific penalty weights
 
-    function CovarianceCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefiter::S, ω::SparseWeights{T})
+    function CovarianceCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefiter::S, ω::@compat(Union{SparseWeights{T},Vector{T},Void}))
         new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Array(T, size(X, 2)),
             Array(T, size(X, 2)), Array(T, maxncoef, size(X, 2)), Array(T, size(X, 1)),
             Array(T, size(X, 1)), convert(T, NaN), coefiter, convert(T, NaN), α,
@@ -515,7 +520,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
                 oldcoef = zero(T)
             end
 
-            λωj = λ*ω[ipred]
+            λωj = λω(λ,ω,ipred)
             newcoef = S(s, λωj*α)/(Xssq[ipred] + λωj*(1 - α))
             if oldcoef != newcoef
                 if icoef == 0
@@ -539,7 +544,7 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
             oldcoef = coef.coef[icoef]
             oldcoef == 0 && continue
             s = Xty[ipred] + getXtX(cd, XtX, icoef, ipred)*oldcoef - compute_gradient(cd, XtX, coef, ipred)
-            λωj = λ*ω[ipred]
+            λωj = λω(λ,ω,ipred)
             newcoef = coef.coef[icoef] = S(s, λωj*α)/(Xssq[ipred] + λωj*(1 - α))
             maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[ipred])
         end

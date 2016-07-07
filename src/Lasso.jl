@@ -16,7 +16,7 @@ include("TrendFiltering.jl")
 using Reexport, StatsBase, .Util
 @reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
 using GLM.FPVector, GLM.wrkwt!
-export LassoPath, fit, fit!, coef
+export LassoPath, fit, fit!, coef, SparseWeights
 
 ## HELPERS FOR SPARSE COEFFICIENTS
 
@@ -201,11 +201,19 @@ const MIN_DEV_FRAC_DIFF = 1e-5
 const MAX_DEV_FRAC = 0.999
 
 # Compute automatic λ values based on X'y and λminratio
-function computeλ(Xy, λminratio, α, nλ)
+function computeλ(Xy, λminratio, α, nλ, nobs, ω::@compat(Union{Vector,SparseWeights,Void}))
     λmax = abs(Xy[1])
-    for i = 1:length(Xy)
+    if ω != nothing
+        λmax /= ω[1]
+    end
+    for i = 2:length(Xy)
         x = abs(Xy[i])
-        λmax = ifelse(x > λmax, x, λmax)
+        if ω != nothing
+            x /= ω[i]
+        end
+        if x > λmax
+            λmax = x
+        end
     end
     λmax /= α
     logλmax = log(λmax)
@@ -225,7 +233,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
                                                      dofit::Bool=true,
                                                      irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
                                                      maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
-                                                     penalty_factor::@compat(Union{Vector,Void})=nothing, fitargs...)
+                                                     penalty_factor::@compat(Union{Vector,SparseWeights,Void})=nothing, fitargs...)
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
     n = length(y)
     length(wts) == n || error("length(wts) = $(length(wts)) should be 0 or $n")
@@ -246,10 +254,12 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
     λminratio = convert(T, λminratio)
     coefitr = randomize ? RandomCoefficientIterator() : (1:0)
 
-    # penalty_factor (ω) defaults to a sparse vector of ones
-    ω = (penalty_factor == nothing) ? SparseWeights{T}(size(X,2)) : convert(SparseWeights,penalty_factor)
-    # following glmnet rescale penalty factors to sum to the number of coefficients
-    ω = rescale(ω,size(X, 2))
+    # penalty_factor (ω) defaults to a vector of ones
+    ω = penalty_factor
+    if ω != nothing
+        # following glmnet rescale penalty factors to sum to the number of coefficients
+        ω = rescale(ω,size(X, 2))
+    end
 
     cd = naivealgorithm ? NaiveCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, 1e-7, coefitr, ω) :
                           CovarianceCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, 1e-7, coefitr, ω)
@@ -279,7 +289,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
                 muscratch = mu.*wts
             end
             Xy = X'muscratch
-            λ = computeλ(Xy, λminratio, α, nλ)
+            λ = computeλ(Xy, λminratio, α, nλ, n, ω)
         else
             λ = convert(Vector{T}, λ)
         end
@@ -296,7 +306,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
         if autoλ
             # Find max λ
             Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwts)
-            λ = computeλ(Xy, λminratio, α, nλ)
+            λ = computeλ(Xy, λminratio, α, nλ, n, ω)
             nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
         else
             λ = convert(Vector{T}, λ)
