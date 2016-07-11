@@ -2,7 +2,7 @@
 S(z, γ) = abs(z) <= γ ? zero(z) : ifelse(z > 0, z - γ, z + γ)
 
 # Elastic net penalty with parameter α and given coefficients
-function P{T}(α::T, β::SparseCoefficients{T}, ω::Void)
+function P{T}(α::T, β::SparseCoefficients{T}, ω::@compat(Void))
     x = zero(T)
     @inbounds @simd for i = 1:nnz(β)
         x += (1 - α)/2*abs2(β.coef[i]) + α*abs(β.coef[i])
@@ -219,7 +219,7 @@ end
     end
 end
 
-λω(λ,ω::Void,ipred::Int) = λ
+λω(λ,ω::@compat(Void),ipred::Int) = λ
 λω(λ,ω::@compat(Union{SparseWeights,Vector}),ipred::Int) = λ*ω[ipred]
 
 # Performs the cycle of all predictors
