@@ -6,7 +6,7 @@ immutable SparseWeights{T}
      SparseWeights(m::Int;default::T=one(T)) = new(default,spzeros(T,m,1))
 end
 
-import Base.getindex, Base.setindex!, Base.convert, Base.length, Base.sum, Base.endof, Base.*
+import Base.getindex, Base.setindex!, Base.convert, Base.length, Base.sum, Base.endof, Base.*, Base.show
 getindex(A::SparseWeights, I) = getindex(A.spvec,I) + A.default
 function getindex(A::SparseWeights, i::Int)
   x = getindex(A.spvec,i)
@@ -39,5 +39,44 @@ function *{T}(A::SparseWeights{T},x::Real)
      B
 end
 
+function Base.show(io::IO, w::SparseWeights)
+    S = w.spvec
+    print(io, S.m, "×", S.n, " sparse weigths vector with ", nnz(S), " ", eltype(S), " entries different from the default ($(w.default))")
+    # following code is from SparseMatrixCSC's show
+    if nnz(S) == 0
+        print(io,".")
+        return nothing
+    else
+        print(io,":")
+    end
+    limit = false #::Bool = get(io, :limit, false) # did not work in 0.4.5
+    if limit
+        rows = displaysize(io)[1]
+        half_screen_rows = div(rows - 8, 2)
+    else
+        half_screen_rows = typemax(Int)
+    end
+    pad = ndigits(max(S.m,S.n))
+    k = 0
+    sep = "\n\t"
+    # io = IOContext(io)
+    # if !haskey(io, :compact)
+    #     io = IOContext(io, :compact => true)
+    # end
+    for col = 1:S.n, k = S.colptr[col] : (S.colptr[col+1]-1)
+        if k < half_screen_rows || k > nnz(S)-half_screen_rows
+            print(io, sep, '[', rpad(S.rowval[k], pad), "]  =  ")
+            if isassigned(S.nzval, k)
+                # add w.default to entries
+                Base.show(io, S.nzval[k]+w.default)
+            else
+                print(io, Base.undef_ref_str)
+            end
+        elseif k == half_screen_rows
+            print(io, sep, '\u22ee')
+        end
+        k += 1
+    end
+end
 # rescales A so that it sums to base
 rescale(A,base) = A * (base / sum(A))

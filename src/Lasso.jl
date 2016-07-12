@@ -16,8 +16,9 @@ include("TrendFiltering.jl")
 using Reexport, StatsBase, .Util
 @reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
 using GLM.FPVector, GLM.wrkwt!
-export LassoPath, fit, fit!, coef, SparseWeights
+export LassoPath, GammaLassoPath, fit, fit!, coef, SparseWeights
 
+abstract RegularizationPath <: LinPred
 ## HELPERS FOR SPARSE COEFFICIENTS
 
 immutable SparseCoefficients{T} <: AbstractVector{T}
@@ -325,5 +326,6 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
 end
 
 include("coordinate_descent.jl")
+include("gammalasso.jl")
 
 end

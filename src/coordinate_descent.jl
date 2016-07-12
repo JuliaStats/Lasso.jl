@@ -673,7 +673,7 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbo
 
     if autoλ
         # No need to fit the first model
-        coefs[:, 1] = zero(T)
+        # coefs[:, 1] = zero(T) # redundant
         b0s[1] = path.nullb0
         i = 2
     else
