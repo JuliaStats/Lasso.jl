@@ -16,9 +16,8 @@ include("TrendFiltering.jl")
 using Reexport, StatsBase, .Util
 @reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
 using GLM.FPVector, GLM.wrkwt!
-export LassoPath, GammaLassoPath, fit, fit!, coef, SparseWeights
+export LassoPath, GammaLassoPath, fit, fit!, coef
 
-abstract RegularizationPath <: LinPred
 ## HELPERS FOR SPARSE COEFFICIENTS
 
 immutable SparseCoefficients{T} <: AbstractVector{T}
@@ -28,8 +27,6 @@ immutable SparseCoefficients{T} <: AbstractVector{T}
 
     SparseCoefficients(n::Int) = new(T[], Int[], zeros(Int, n))
 end
-
-include("sparse.jl")
 
 function Base.A_mul_B!{T}(out::Vector, X::Matrix, coef::SparseCoefficients{T})
     fill!(out, zero(eltype(out)))
@@ -202,7 +199,7 @@ const MIN_DEV_FRAC_DIFF = 1e-5
 const MAX_DEV_FRAC = 0.999
 
 # Compute automatic λ values based on X'y and λminratio
-function computeλ(Xy, λminratio, α, nλ, ω::@compat(Union{Vector,SparseWeights,Void}))
+function computeλ(Xy, λminratio, α, nλ, ω::@compat(Union{Vector,Void}))
     λmax = abs(Xy[1])
     if ω != nothing
         λmax /= ω[1]
@@ -221,6 +218,9 @@ function computeλ(Xy, λminratio, α, nλ, ω::@compat(Union{Vector,SparseWeigh
     λ = exp(linspace(logλmax, logλmax + log(λminratio), nλ))
 end
 
+# rescales A so that it sums to base
+rescale(A,base) = A * (base / sum(A))
+
 function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
                                                      X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
                                                      l::Link=canonicallink(d);
@@ -234,7 +234,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
                                                      dofit::Bool=true,
                                                      irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
                                                      maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
-                                                     penalty_factor::@compat(Union{Vector,SparseWeights,Void})=nothing, fitargs...)
+                                                     penalty_factor::@compat(Union{Vector,Void})=nothing, fitargs...)
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
     n = length(y)
     length(wts) == n || error("length(wts) = $(length(wts)) should be 0 or $n")

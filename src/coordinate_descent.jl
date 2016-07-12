@@ -10,7 +10,7 @@ function P{T}(α::T, β::SparseCoefficients{T}, ω::@compat(Void))
     x
 end
 
-function P{T}(α::T, β::SparseCoefficients{T}, ω::@compat(Union{SparseWeights{T},Vector{T}}))
+function P{T}(α::T, β::SparseCoefficients{T}, ω::Vector{T})
     x = zero(T)
     @inbounds @simd for i = 1:nnz(β)
         x += ω[β.coef2predictor[i]] * ((1 - α)/2*abs2(β.coef[i]) + α*abs(β.coef[i]))
@@ -35,9 +35,9 @@ type NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator
     maxiter::Int                  # maximum number of iterations
     maxncoef::Int                 # maximum number of coefficients
     tol::T                        # tolerance
-    ω::@compat(Union{SparseWeights{T},Vector{T},Void})   # coefficient-specific penalty weights
+    ω::@compat(Union{Vector{T},Void})   # coefficient-specific penalty weights
 
-    NaiveCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefitr::S, ω::@compat(Union{SparseWeights{T},Vector{T},Void})) =
+    NaiveCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefitr::S, ω::@compat(Union{Vector{T},Void})) =
         new(X, zero(T), zeros(T, size(X, 2)), zeros(T, maxncoef), Array(T, size(X, 1)), zero(T),
             Array(T, size(X, 1)), Array(T, size(X, 1)), convert(T, NaN), coefitr, convert(T, NaN),
             α, typemax(Int), maxncoef, tol, ω)
@@ -220,7 +220,7 @@ end
 end
 
 λω(λ,ω::@compat(Void),ipred::Int) = λ
-λω(λ,ω::@compat(Union{SparseWeights,Vector}),ipred::Int) = λ*ω[ipred]
+λω(λ,ω::Vector,ipred::Int) = λ*ω[ipred]
 
 # Performs the cycle of all predictors
 function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, λ::T, all::Bool)
@@ -317,9 +317,9 @@ type CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIte
     maxiter::Int                  # maximum number of iterations
     maxncoef::Int                 # maximum number of coefficients
     tol::T                        # tolerance
-    ω::@compat(Union{SparseWeights{T},Vector{T},Void})           # coefficient-specific penalty weights
+    ω::@compat(Union{Vector{T},Void})           # coefficient-specific penalty weights
 
-    function CovarianceCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefiter::S, ω::@compat(Union{SparseWeights{T},Vector{T},Void}))
+    function CovarianceCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefiter::S, ω::@compat(Union{Vector{T},Void}))
         new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Array(T, size(X, 2)),
             Array(T, size(X, 2)), Array(T, maxncoef, size(X, 2)), Array(T, size(X, 1)),
             Array(T, size(X, 1)), convert(T, NaN), coefiter, convert(T, NaN), α,

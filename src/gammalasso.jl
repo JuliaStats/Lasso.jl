@@ -28,11 +28,16 @@ type GammaLassoPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel}),T} <: 
 end
 
 function Base.show(io::IO, path::GammaLassoPath)
-    prefix = isa(path.m, GeneralizedLinearModel) ? string(typeof(path.m.rr.d).name.name, " ") : ""
-    println(io, prefix*"Lasso Solution Path ($(size(path.coefs, 2)) solutions for $(size(path.coefs, 1)) predictors in $(path.niter) iterations):")
-
     coefs = path.coefs
     ncoefs = zeros(Int, size(coefs, 2))
+    p = size(coefs,1)
+
+    prefix = isa(path.m, GeneralizedLinearModel) ? string(typeof(path.m.rr.d).name.name, " ") : ""
+    if path.γ!=zeros(p)
+        prefix*="Gamma-"
+    end
+    println(io, prefix*"Lasso Solution Path ($(size(path.coefs, 2)) solutions for $(size(path.coefs, 1)) predictors in $(path.niter) iterations):")
+
     for i = 1:size(coefs, 2)-1
         ncoefs[i] = coefs.colptr[i+1] - coefs.colptr[i]
     end
@@ -45,10 +50,9 @@ StatsBase.coef(path::GammaLassoPath) = path.coefs
 ## MODEL CONSTRUCTION
 
 "Compute coeffiecient specific weights vector ω_j^t based on previous iteration coefficients β"
-function computeω{T}(γ::Vector{T}, β::SparseCoefficients{T})
-    # initialize to a sparse vector of ones
-    p = length(γ)
-    ω = SparseWeights{T}(p)
+function computeω!{T}(ω::Vector{T}, γ::Vector{T}, β::SparseCoefficients{T})
+    # initialize to a vector of ones
+    fill!(ω,one(T))
 
     # set weights of non zero betas
     @inbounds @simd for icoef = 1:nnz(β)
@@ -60,13 +64,13 @@ function computeω{T}(γ::Vector{T}, β::SparseCoefficients{T})
     end
 
     # rescale(ω,p) # not sure if rescaling is the right thing to do here, nothing about it in Taddy (2016)
-    ω
+    nothing
 end
 
 function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{GammaLassoPath},
                                                      X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
                                                      l::Link=canonicallink(d);
-                                                     γ::@compat(Union{T,Vector{T}})=0.0,
+                                                     γ::@compat(Union{Number,Vector{Number}})=0.0,
                                                      wts::@compat(Union{FPVector,Void})=ones(T, length(y)),
                                                      offset::V=similar(y, 0),
                                                      α::Number=one(eltype(y)), nλ::Int=100,
@@ -103,8 +107,8 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{GammaLassoPath},
     end
 
     # initialize penalty factors to 1 (no rescaling to sum to the number of coefficients)
-    # ω = rescale(SparseWeights{T}(p),p)
-    ω = SparseWeights{T}(p)
+    ω = ones(T,p)
+    # ω = rescale(ω,p)
 
     # Lasso initialization
     α = convert(T, α)
@@ -298,7 +302,7 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::GammaLassoPath{S,T}; 
             end
 
             i += 1
-            cd.ω = computeω(γ,newcoef) # use β^{i-1} for β^{i} gamma lasso weights
+            computeω!(cd.ω,γ,newcoef) # use β^{i-1} for β^{i} gamma lasso weights
             verbose && println("$i: ω=$(cd.ω)")
         end
     end
@@ -364,7 +368,7 @@ function StatsBase.fit!{S<:LinearModel,T}(path::GammaLassoPath{S,T}; verbose::Bo
         end
 
         i += 1
-        cd.ω = computeω(γ,newcoef) # use β^{i-1} for β^{i} gamma lasso weights
+        computeω!(cd.ω,γ,newcoef) # use β^{i-1} for β^{i} gamma lasso weights
         verbose && println("$i: ω=$(cd.ω)")
     end
 
