@@ -1,82 +1,87 @@
-# Test against GLMNet when γ=0
+# using Lasso
+using GLM, Distributions, GLMNet, FactCheck, RCall, DataFrames
+
+import StatsBase.deviance, StatsBase.nobs
+nobs(path::RegularizationPath) = length(path.m.rr.y)
+deviance(path::RegularizationPath) = (1 .- path.pct_dev) .* (path.nulldev * nobs(path))
+function issimilarhead(a::AbstractVector,b::AbstractVector;rtol=1e-4)
+    n = min(size(a,1),size(b,1))
+    isapprox(a[1:n],b[1:n];rtol=rtol) #? true : [a[1:n] b[1:n]]
+end
+function issimilarhead(a::AbstractMatrix,b::AbstractMatrix;rtol=1e-4)
+    n = min(size(a,1),size(b,1))
+    m = min(size(a,2),size(b,2))
+    isapprox(a[1:n,1:m],b[1:n,1:m];rtol=rtol) #? true : [a[1:n,1:m] b[1:n,1:m]]
+end
+datapath = joinpath(dirname(@__FILE__), "data")
+
+# fitname="fitgl"
+# params = readtable(joinpath(datapath,"gamlr_$fitname.params.csv"))
+# fittable = readtable(joinpath(datapath,"gamlr_$fitname.csv"))
+# coefs = readcsv(joinpath(datapath,"gamlr_$fitname.coefs.csv"))
+# family = params[1,:fit_family]
+# γ=params[1,:fit_gamma]
+# l = fit(GammaLassoPath, X, y; λminratio=0.001,γ=γ)
+# nλ = length(l.λ)
+# @fact deviance(l) --> roughly(fittable[1:nλ,:fit_deviance], rtol)
+# [deviance(l) fittable[1:nλ,:fit_deviance]]
+# [l.coefs' coefs[:,1:nλ]']
+# issimilarhead(l.coefs',coefs';rtol=0.001)
+#
+# coefs'
+# l.coefs'
+
+rtol=1e-2
 facts("GammaLassoPath") do
-    for (dist, link) in ((Normal(), IdentityLink()), (Binomial(), LogitLink()), (Poisson(), LogLink()))
-        context("$(typeof(dist).name.name) $(typeof(link).name.name)") do
-            for sp in (false, true)
-                srand(1337)
-                context(sp ? "sparse" : "dense") do
-                    (X, y) = genrand(Float64, dist, link, 1000, 10, sp)
-                    yoff = randn(length(y))
-                    for intercept = (false, true)
-                        context("$(intercept ? "w/" : "w/o") intercept") do
-                            for alpha = [1, 0.5]
-                                context("alpha = $alpha") do
-                                    for offset = Vector{Float64}[Float64[], yoff]
-                                        context("$(isempty(offset) ? "w/o" : "w/") offset") do
-                                            # First fit with GLMNet
-                                            if isa(dist, Normal)
-                                                yp = isempty(offset) ? y : y + offset
-                                                ypstd = std(yp, corrected=false)
-                                                # glmnet does this on entry, which changes λ mappings, but not
-                                                # coefficients. Should we?
-                                                yp ./= ypstd
-                                                !isempty(offset) && (offset ./= ypstd)
-                                                y ./= ypstd
-                                                g = glmnet(X, yp, dist, intercept=intercept, alpha=alpha, tol=10*eps())
-                                            elseif isa(dist, Binomial)
-                                                yp = zeros(size(y, 1), 2)
-                                                yp[:, 1] = y .== 0
-                                                yp[:, 2] = y .== 1
-                                                g = glmnet(X, yp, dist, intercept=intercept, alpha=alpha, tol=10*eps(),
-                                                           offsets=isempty(offset) ? zeros(length(y)) : offset)
-                                            else
-                                                g = glmnet(X, y, dist, intercept=intercept, alpha=alpha, tol=10*eps(),
-                                                           offsets=isempty(offset) ? zeros(length(y)) : offset)
-                                            end
-                                            gbeta = convert(Matrix{Float64}, g.betas)
+    for (family, dist, link) in (("gaussian", Normal(), IdentityLink()), ("binomial", Binomial(), LogitLink()), ("poisson", Poisson(), LogLink()))[1:3]
+        context(family) do
+            data = readcsv(joinpath(datapath,"gamlr.$family.data.csv"))
+            y = data[:,1]
+            X = data[:,2:end]
+            (n,p) = size(X)
+            for fitname in ["fitlasso", "fitgl", "fitglbv"][1:3]
+                # get gamlr params and estimates
+                params = readtable(joinpath(datapath,"gamlr.$family.$fitname.params.csv"))
+                fittable = readtable(joinpath(datapath,"gamlr.$family.$fitname.fit.csv"))
+                gcoefs = convert(Matrix{Float64},readcsv(joinpath(datapath,"gamlr.$family.$fitname.coefs.csv")))
+                family = params[1,:fit_family]
+                γ=params[1,:fit_gamma]
+                context("$fitname: γ=$γ, family=$family") do
 
-                                            for randomize = VERSION >= v"0.4-dev+1915" ? [false, true] : [false]
-                                                context(randomize ? "random" : "sequential") do
-                                                    niter = 0
-                                                    for naivealgorithm in (false, true)
-                                                         context(naivealgorithm ? "naive" : "covariance") do
-                                                             for spfit in (false, true)
-                                                                 context(spfit ? "as SparseMatrixCSC" : "as Matrix") do
-                                                                     for criterion in (:coef, :obj)
-                                                                         context("criterion = $criterion") do
-                                                                            # Now fit with GammaLasso
-                                                                            l = fit(GammaLassoPath, spfit ? sparse(X) : X, y, dist, link,
-                                                                                    λ=g.lambda, naivealgorithm=naivealgorithm, intercept=intercept,
-                                                                                    cd_tol=10*eps(), irls_tol=10*eps(), criterion=criterion, randomize=randomize,
-                                                                                    α=alpha, offset=offset)
+                    # fit julia version
+                    l = fit(GammaLassoPath, X, y; λminratio=0.001,γ=γ)
 
-                                                                            # rd = (l.coefs - gbeta)./gbeta
-                                                                            # rd[!isfinite(rd)] = 0
-                                                                            # println("         coefs adiff = $(maxabs(l.coefs - gbeta)) rdiff = $(maxabs(rd))")
-                                                                            # rd = (l.b0 - g.a0)./g.a0
-                                                                            # rd[!isfinite(rd)] = 0
-                                                                            # println("         b0    adiff = $(maxabs(l.b0 - g.a0)) rdiff = $(maxabs(rd))")
-                                                                            @fact l.coefs --> roughly(gbeta, 5e-7)
-                                                                            @fact l.b0 --> roughly(g.a0, 2e-5)
+                    # compare
+                    @fact issimilarhead(l.λ,fittable[:fit_lambda];rtol=rtol) --> true
+                    @fact issimilarhead(l.b0,fittable[:fit_alpha];rtol=rtol) --> true
+                    @fact issimilarhead(full(l.coefs'),gcoefs';rtol=rtol) --> true
+                    # @fact issimilarhead(deviance(l),fittable[:fit_deviance];rtol=rtol*10) --> true
 
-                                                                            # Ensure same number of iterations with all algorithms
-                                                                            if niter == 0
-                                                                                niter = l.niter
-                                                                            else
-                                                                                @fact l.niter --> niter
-                                                                            end
-                                                                        end
-                                                                    end
-                                                                end
-                                                            end
-                                                        end
-                                                    end
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
+                    if γ==0
+                        context("γ=0 (Lasso), try to compare with GLMNet") do
+                            if isa(dist, Normal)
+                                yp = y
+                                # ypstd = std(yp, corrected=false)
+                                # # glmnet does this on entry, which changes λ mappings, but not
+                                # # coefficients. Should we?
+                                # yp ./= ypstd
+                                g = glmnet(X, yp, dist; lambda_min_ratio=0.001, tol=10*eps())
+                            elseif isa(dist, Binomial)
+                                yp = zeros(size(y, 1), 2)
+                                yp[:, 1] = y .== 0
+                                yp[:, 2] = y .== 1
+                                g = glmnet(X, yp, dist; lambda_min_ratio=0.001, tol=10*eps())
+                            else
+                                g = glmnet(X, y, dist; lambda_min_ratio=0.001, tol=10*eps())
                             end
+                            gbeta = convert(Matrix{Float64}, g.betas)
+
+                            @fact issimilarhead(l.λ,g.lambda;rtol=rtol) --> true
+                            @fact issimilarhead(l.b0,g.a0;rtol=rtol) --> true
+                            @fact issimilarhead(full(l.coefs'),gbeta';rtol=rtol) --> true
+                            # @fact l.λ --> roughly(g.lambda; rtol=rtol)
+                            # @fact full(l.coefs) --> roughly(gbeta; rtol=rtol)
+                            # @fact l.b0 --> roughly(g.a0; rtol=rtol)
                         end
                     end
                 end
