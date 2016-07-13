@@ -16,7 +16,7 @@ include("TrendFiltering.jl")
 using Reexport, StatsBase, .Util
 @reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
 using GLM.FPVector, GLM.wrkwt!
-export LassoPath, GammaLassoPath, fit, fit!, coef
+export RegularizationPath, LassoPath, GammaLassoPath, fit, fit!, coef
 
 ## HELPERS FOR SPARSE COEFFICIENTS
 
@@ -159,9 +159,10 @@ function addcoef(x::RandomCoefficientIterator, icoef::Int)
 end
 addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
 
+abstract RegularizationPath <: RegressionModel
 ## LASSO PATH
 
-type LassoPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel}),T} <: RegressionModel
+type LassoPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel}),T} <: RegularizationPath
     m::S
     nulldev::T                    # null deviance
     nullb0::T                     # intercept of null model, if one was fit
@@ -327,5 +328,6 @@ end
 
 include("coordinate_descent.jl")
 include("gammalasso.jl")
+include("plots.jl")
 
 end

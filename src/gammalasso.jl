@@ -10,7 +10,7 @@
 
 ## GAMMA LASSO PATH
 
-type GammaLassoPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel}),T} <: RegressionModel
+type GammaLassoPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel}),T} <: RegularizationPath
     m::S
     nulldev::T                    # null deviance
     nullb0::T                     # intercept of null model, if one was fit
