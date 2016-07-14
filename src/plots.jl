@@ -1,6 +1,5 @@
 using Gadfly, DataFrames
-import Gadfly.plot
-function plot(path::RegularizationPath; x=:iteration, varnames=nothing, selectedvars=:nonzero)
+function Gadfly.plot(path::RegularizationPath; x=:iteration, varnames=nothing, selectedvars=:nonzero)
     β=coef(path)
     (p,nλ)=size(β)
 

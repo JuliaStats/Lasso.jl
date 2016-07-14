@@ -42,7 +42,7 @@ function Base.show(io::IO, path::GammaLassoPath)
         ncoefs[i] = coefs.colptr[i+1] - coefs.colptr[i]
     end
     ncoefs[end] = nnz(coefs) - coefs.colptr[size(coefs, 2)] + 1
-    Base.showarray(io, [path.λ path.pct_dev ncoefs]; header=false)
+    Base.showarray(io, [path.λ path.pct_dev ncoefs df(path)]; header=false)
 end
 
 StatsBase.coef(path::GammaLassoPath) = path.coefs
@@ -170,7 +170,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{GammaLassoPath},
         rr = GlmResp{typeof(y),typeof(d),typeof(l)}(y, d, l, eta, similar(eta), offset, wts)
         model = GeneralizedLinearModel(rr, cd, false)
     end
-    
+
     # Fit path
     path = GammaLassoPath{typeof(model),T}(model, nulldev, nullb0, λ, autoλ, γ, Xnorm)
     dofit && fit!(path; irls_tol=irls_tol, fitargs...)

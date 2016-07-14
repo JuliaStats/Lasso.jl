@@ -326,9 +326,32 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
     path
 end
 
-import StatsBase.deviance, StatsBase.nobs
-nobs(path::RegularizationPath) = length(path.m.rr.y)
-deviance(path::RegularizationPath) = (1 .- path.pct_dev) .* (path.nulldev * nobs(path))
+StatsBase.nobs(path::RegularizationPath) = length(path.m.rr.y)
+StatsBase.deviance(path::RegularizationPath) = (1 .- path.pct_dev) .* (path.nulldev * nobs(path))
+dispersion_parameter(path::RegularizationPath) = typeof(path.m) <: LinearModel || GLM.dispersion_parameter(path.m.rr.d)
+""" The degrees-of-freedom in each segment of the path as the number of non zero coefficients
+    plus a dispersion parameter when appropriate.
+    Note that for GammaLassoPath this may be a crude approximation, as gamlr does this differently.
+"""
+function df(path::RegularizationPath)
+    nλ = length(path.λ)
+    βs = coef(path)
+    dof = zeros(Int,nλ)
+    for s=1:nλ
+        dof[s] = length(nzrange(βs, s))
+    end
+
+    if dispersion_parameter(path)
+        # add one for dispersion_parameter
+        dof+=1
+    end
+
+    if any(path.b0.!=0)
+        # add one for intercept
+        dof+=1
+    end
+    dof
+end
 
 include("coordinate_descent.jl")
 include("gammalasso.jl")

@@ -2,6 +2,15 @@
 
 library(gamlr)
 
+# automatic way only works with source("script.R"), not with RStudio
+script.dir <- dirname(sys.frame(1)$ofile)
+testdata.dir <- paste0(script.dir,"/data")
+
+# uncomment to set manually
+# testdata.dir <- "~/.julia/v0.4/Lasso/test/data"
+
+setwd(testdata.dir)
+
 ### a low-D test (highly multi-collinear)
 
 set.seed(13)
@@ -32,7 +41,7 @@ for(f in 1:3) {
   
   # export test data
   data = cbind(yp, x)
-  familyfilename <- paste0("~/.julia/v0.4/Lasso/test/data/gamlr.",family$family)
+  familyfilename <- paste0("gamlr.",family$family)
   write.table(data,file = paste0(familyfilename,".data.csv"), sep=",",row.names=FALSE,col.names=FALSE)
   
   # export estimates

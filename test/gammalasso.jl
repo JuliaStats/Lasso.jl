@@ -1,4 +1,4 @@
-using Lasso
+# using Lasso
 using GLM, Distributions, GLMNet, FactCheck, DataFrames
 
 function issimilarhead(a::AbstractVector,b::AbstractVector;rtol=1e-4)
@@ -39,6 +39,7 @@ facts("GammaLassoPath") do
                     @fact issimilarhead(glp.b0,fittable[:fit_alpha];rtol=rtol) --> true
                     @fact issimilarhead(full(glp.coefs'),gcoefs';rtol=rtol) --> true
                     @fact issimilarhead(deviance(glp),fittable[:fit_deviance];rtol=rtol) --> true
+                    @fact issimilarhead(round(df(glp)[2:end]),round(fittable[2:end,:fit_df])) --> true
 
                     if γ==0
 
@@ -48,31 +49,6 @@ facts("GammaLassoPath") do
                             @fact glp.b0 --> lp.b0
                             @fact glp.coefs --> lp.coefs
                         end
-                        # context("γ=0 (Lasso), try to compare with GLMNet") do
-                        #     if isa(dist, Normal)
-                        #         # yp = y
-                        #         # ypstd = std(yp, corrected=false)
-                        #         # # glmnet does this on entry, which changes λ mappings, but not
-                        #         # # coefficients. Should we?
-                        #         # yp ./= ypstd
-                        #         g = glmnet(X, y, dist; tol=10*eps(), lambda=λ )#,lambda_min_ratio=0.001)
-                        #     elseif isa(dist, Binomial)
-                        #         yp = zeros(size(y, 1), 2)
-                        #         yp[:, 1] = y .== 0
-                        #         yp[:, 2] = y .== 1
-                        #         g = glmnet(X, yp, dist; tol=10*eps(), lambda=λ )#,lambda_min_ratio=0.001)
-                        #     else
-                        #         g = glmnet(X, y, dist; tol=10*eps(), lambda=λ )#,lambda_min_ratio=0.001)
-                        #     end
-                        #     gbeta = convert(Matrix{Float64}, g.betas)
-                        #
-                        #     @fact issimilarhead(glp.λ,g.lambda;rtol=rtol) --> true
-                        #     @fact issimilarhead(glp.b0,g.a0;rtol=rtol) --> true
-                        #     @fact issimilarhead(full(glp.coefs'),gbeta';rtol=rtol) --> true
-                        #     # @fact glp.λ --> roughly(g.lambda; rtol=rtol)
-                        #     # @fact full(glp.coefs) --> roughly(gbeta; rtol=rtol)
-                        #     # @fact glp.b0 --> roughly(g.a0; rtol=rtol)
-                        # end
                     end
                 end
             end
