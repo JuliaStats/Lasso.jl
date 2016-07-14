@@ -1,91 +1,131 @@
-# using Lasso
-using GLM, Distributions, GLMNet, FactCheck, RCall, DataFrames
+using Lasso
+using GLM, Distributions, GLMNet, FactCheck, DataFrames
 
-import StatsBase.deviance, StatsBase.nobs
-nobs(path::RegularizationPath) = length(path.m.rr.y)
-deviance(path::RegularizationPath) = (1 .- path.pct_dev) .* (path.nulldev * nobs(path))
 function issimilarhead(a::AbstractVector,b::AbstractVector;rtol=1e-4)
     n = min(size(a,1),size(b,1))
-    isapprox(a[1:n],b[1:n];rtol=rtol) #? true : [a[1:n] b[1:n]]
+    isapprox(a[1:n],b[1:n];rtol=rtol) ? true : [a[1:n] b[1:n]]
 end
 function issimilarhead(a::AbstractMatrix,b::AbstractMatrix;rtol=1e-4)
     n = min(size(a,1),size(b,1))
     m = min(size(a,2),size(b,2))
-    isapprox(a[1:n,1:m],b[1:n,1:m];rtol=rtol) #? true : [a[1:n,1:m] b[1:n,1:m]]
+    isapprox(a[1:n,1:m],b[1:n,1:m];rtol=rtol) ? true : [a[1:n,1:m] b[1:n,1:m]]
 end
 datapath = joinpath(dirname(@__FILE__), "data")
 
-# fitname="fitgl"
-# params = readtable(joinpath(datapath,"gamlr_$fitname.params.csv"))
-# fittable = readtable(joinpath(datapath,"gamlr_$fitname.csv"))
-# coefs = readcsv(joinpath(datapath,"gamlr_$fitname.coefs.csv"))
-# family = params[1,:fit_family]
-# γ=params[1,:fit_gamma]
-# l = fit(GammaLassoPath, X, y; λminratio=0.001,γ=γ)
-# nλ = length(l.λ)
-# @fact deviance(l) --> roughly(fittable[1:nλ,:fit_deviance], rtol)
-# [deviance(l) fittable[1:nλ,:fit_deviance]]
-# [l.coefs' coefs[:,1:nλ]']
-# issimilarhead(l.coefs',coefs';rtol=0.001)
-#
-# coefs'
-# l.coefs'
-
 rtol=1e-2
 facts("GammaLassoPath") do
-    for (family, dist, link) in (("gaussian", Normal(), IdentityLink()), ("binomial", Binomial(), LogitLink()), ("poisson", Poisson(), LogLink()))[1:3]
+    for (family, dist, link) in (("gaussian", Normal(), IdentityLink()), ("binomial", Binomial(), LogitLink()), ("poisson", Poisson(), LogLink()))
         context(family) do
             data = readcsv(joinpath(datapath,"gamlr.$family.data.csv"))
             y = data[:,1]
             X = data[:,2:end]
             (n,p) = size(X)
-            for fitname in ["fitlasso", "fitgl", "fitglbv"][1:3]
+            for γ in [0 2 10]
+                fitname = "gamma$γ"
                 # get gamlr params and estimates
                 params = readtable(joinpath(datapath,"gamlr.$family.$fitname.params.csv"))
                 fittable = readtable(joinpath(datapath,"gamlr.$family.$fitname.fit.csv"))
                 gcoefs = convert(Matrix{Float64},readcsv(joinpath(datapath,"gamlr.$family.$fitname.coefs.csv")))
                 family = params[1,:fit_family]
                 γ=params[1,:fit_gamma]
-                context("$fitname: γ=$γ, family=$family") do
+                # λ = convert(Vector{Float64},fittable[:fit_lambda]) # should be set to nothing evenatually
+                context("γ=$γ") do
 
                     # fit julia version
-                    l = fit(GammaLassoPath, X, y; λminratio=0.001,γ=γ)
+                    glp = fit(GammaLassoPath, X, y, dist, link; γ=γ, λminratio=0.001) #, λ=λ)
 
                     # compare
-                    @fact issimilarhead(l.λ,fittable[:fit_lambda];rtol=rtol) --> true
-                    @fact issimilarhead(l.b0,fittable[:fit_alpha];rtol=rtol) --> true
-                    @fact issimilarhead(full(l.coefs'),gcoefs';rtol=rtol) --> true
-                    # @fact issimilarhead(deviance(l),fittable[:fit_deviance];rtol=rtol*10) --> true
+                    @fact issimilarhead(glp.λ,fittable[:fit_lambda];rtol=rtol) --> true
+                    @fact issimilarhead(glp.b0,fittable[:fit_alpha];rtol=rtol) --> true
+                    @fact issimilarhead(full(glp.coefs'),gcoefs';rtol=rtol) --> true
+                    @fact issimilarhead(deviance(glp),fittable[:fit_deviance];rtol=rtol) --> true
 
                     if γ==0
-                        context("γ=0 (Lasso), try to compare with GLMNet") do
-                            if isa(dist, Normal)
-                                yp = y
-                                # ypstd = std(yp, corrected=false)
-                                # # glmnet does this on entry, which changes λ mappings, but not
-                                # # coefficients. Should we?
-                                # yp ./= ypstd
-                                g = glmnet(X, yp, dist; lambda_min_ratio=0.001, tol=10*eps())
-                            elseif isa(dist, Binomial)
-                                yp = zeros(size(y, 1), 2)
-                                yp[:, 1] = y .== 0
-                                yp[:, 2] = y .== 1
-                                g = glmnet(X, yp, dist; lambda_min_ratio=0.001, tol=10*eps())
-                            else
-                                g = glmnet(X, y, dist; lambda_min_ratio=0.001, tol=10*eps())
-                            end
-                            gbeta = convert(Matrix{Float64}, g.betas)
 
-                            @fact issimilarhead(l.λ,g.lambda;rtol=rtol) --> true
-                            @fact issimilarhead(l.b0,g.a0;rtol=rtol) --> true
-                            @fact issimilarhead(full(l.coefs'),gbeta';rtol=rtol) --> true
-                            # @fact l.λ --> roughly(g.lambda; rtol=rtol)
-                            # @fact full(l.coefs) --> roughly(gbeta; rtol=rtol)
-                            # @fact l.b0 --> roughly(g.a0; rtol=rtol)
+                        context("Compare with LassoPath") do
+                            lp = fit(LassoPath, X, y, dist, link; λminratio=0.001) #, λ=λ)
+                            @fact glp.λ --> lp.λ
+                            @fact glp.b0 --> lp.b0
+                            @fact glp.coefs --> lp.coefs
                         end
+                        # context("γ=0 (Lasso), try to compare with GLMNet") do
+                        #     if isa(dist, Normal)
+                        #         # yp = y
+                        #         # ypstd = std(yp, corrected=false)
+                        #         # # glmnet does this on entry, which changes λ mappings, but not
+                        #         # # coefficients. Should we?
+                        #         # yp ./= ypstd
+                        #         g = glmnet(X, y, dist; tol=10*eps(), lambda=λ )#,lambda_min_ratio=0.001)
+                        #     elseif isa(dist, Binomial)
+                        #         yp = zeros(size(y, 1), 2)
+                        #         yp[:, 1] = y .== 0
+                        #         yp[:, 2] = y .== 1
+                        #         g = glmnet(X, yp, dist; tol=10*eps(), lambda=λ )#,lambda_min_ratio=0.001)
+                        #     else
+                        #         g = glmnet(X, y, dist; tol=10*eps(), lambda=λ )#,lambda_min_ratio=0.001)
+                        #     end
+                        #     gbeta = convert(Matrix{Float64}, g.betas)
+                        #
+                        #     @fact issimilarhead(glp.λ,g.lambda;rtol=rtol) --> true
+                        #     @fact issimilarhead(glp.b0,g.a0;rtol=rtol) --> true
+                        #     @fact issimilarhead(full(glp.coefs'),gbeta';rtol=rtol) --> true
+                        #     # @fact glp.λ --> roughly(g.lambda; rtol=rtol)
+                        #     # @fact full(glp.coefs) --> roughly(gbeta; rtol=rtol)
+                        #     # @fact glp.b0 --> roughly(g.a0; rtol=rtol)
+                        # end
                     end
                 end
             end
         end
     end
 end
+
+## the following code is useful for understanding comparison failures
+#
+# (family, dist, link) = (("gaussian", Normal(), IdentityLink()), ("binomial", Binomial(), LogitLink()), ("poisson", Poisson(), LogLink()))[2]
+# data = readcsv(joinpath(datapath,"gamlr.$family.data.csv"))
+# y = data[:,1]
+# X = data[:,2:end]
+# (n,p) = size(X)
+# γ = [0 2 10][1]
+# fitname = "gamma$γ"
+# # get gamlr params and estimates
+# params = readtable(joinpath(datapath,"gamlr.$family.$fitname.params.csv"))
+# fittable = readtable(joinpath(datapath,"gamlr.$family.$fitname.fit.csv"))
+# gcoefs = convert(Matrix{Float64},readcsv(joinpath(datapath,"gamlr.$family.$fitname.coefs.csv")))
+# family = params[1,:fit_family]
+# λ = convert(Vector{Float64},fittable[:fit_lambda]) # should be set to nothing evenatually
+# # fit julia version
+# glp = fit(GammaLassoPath, X, y, dist, link, λ=nothing,γ=γ,standardize=true, λminratio=0.001)
+#
+# # compare
+# rtol=1e-3
+# @fact issimilarhead(glp.λ,fittable[:fit_lambda];rtol=rtol) --> true
+# @fact issimilarhead(glp.b0,fittable[:fit_alpha];rtol=rtol) --> true
+# @fact issimilarhead(full(glp.coefs'),gcoefs';rtol=10*rtol) --> true
+# @fact issimilarhead(deviance(glp),fittable[:fit_deviance];rtol=10rtol) --> true
+#
+# lp = fit(LassoPath, X, y, dist, link; λ=λ) #, λminratio=0.001)
+# @fact glp.λ --> lp.λ
+# @fact glp.b0 --> lp.b0
+# @fact glp.coefs --> lp.coefs
+#
+# # using RCall
+# # @rimport gamlr as GAMLR
+# # push!(LOAD_PATH, joinpath(homedir(),"Dropbox/workspace/Text/code"))
+# # using DMR
+# # fit = DMR.gamlr(GAMLR.gamlr(X,y,family=family))
+# # fit.attributes["alpha"]
+# plot(glp;x=:loglambda)
+
+
+
+
+
+
+
+
+
+
+
+#

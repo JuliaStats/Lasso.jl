@@ -326,6 +326,10 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
     path
 end
 
+import StatsBase.deviance, StatsBase.nobs
+nobs(path::RegularizationPath) = length(path.m.rr.y)
+deviance(path::RegularizationPath) = (1 .- path.pct_dev) .* (path.nulldev * nobs(path))
+
 include("coordinate_descent.jl")
 include("gammalasso.jl")
 include("plots.jl")

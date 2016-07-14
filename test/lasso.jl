@@ -56,12 +56,17 @@ facts("LassoPath") do
                                     for nonone_penalty_factors in (false,true)
                                         context("$(nonone_penalty_factors ? "non-one" : "all-one") penalty factors") do
                                             penalty_factor, penalty_factor_glmnet = gen_penalty_factors(X,nonone_penalty_factors)
-                                            print("penalty_factor=$penalty_factor")
                                             for offset = Vector{Float64}[Float64[], yoff]
                                                 context("$(isempty(offset) ? "w/o" : "w/") offset") do
                                                     # First fit with GLMNet
                                                     if isa(dist, Normal)
                                                         yp = isempty(offset) ? y : y + offset
+                                                        ypstd = std(yp, corrected=false)
+                                                        # glmnet does this on entry, which changes λ mappings, but not
+                                                        # coefficients. Should we?
+                                                        yp ./= ypstd
+                                                        !isempty(offset) && (offset ./= ypstd)
+                                                        y ./= ypstd
                                                         g = glmnet(X, yp, dist, intercept=intercept, alpha=alpha, tol=10*eps(); penalty_factor=penalty_factor_glmnet)
                                                     elseif isa(dist, Binomial)
                                                         yp = zeros(size(y, 1), 2)
@@ -94,7 +99,7 @@ facts("LassoPath") do
                                                                             end
                                                                             # Now fit with Lasso
                                                                             l = fit(LassoPath, spfit ? sparse(X) : X, y, dist, link,
-                                                                                    λ=nothing, naivealgorithm=naivealgorithm, intercept=intercept,
+                                                                                    λ=g.lambda, naivealgorithm=naivealgorithm, intercept=intercept,
                                                                                     cd_tol=cd_tol, irls_tol=irls_tol, criterion=criterion, randomize=randomize,
                                                                                     α=alpha, offset=offset, penalty_factor=penalty_factor)
 

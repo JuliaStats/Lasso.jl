@@ -170,6 +170,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{GammaLassoPath},
         rr = GlmResp{typeof(y),typeof(d),typeof(l)}(y, d, l, eta, similar(eta), offset, wts)
         model = GeneralizedLinearModel(rr, cd, false)
     end
+    
     # Fit path
     path = GammaLassoPath{typeof(model),T}(model, nulldev, nullb0, λ, autoλ, γ, Xnorm)
     dofit && fit!(path; irls_tol=irls_tol, fitargs...)

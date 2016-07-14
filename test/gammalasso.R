@@ -17,23 +17,18 @@ rbinom1 <- function(n,p) {rbinom(n,1,p)}
 
 families <- list(gaussian(link="identity"),binomial(link="logit"),poisson(link="log"))
 randfuns <- list(rnorm,rbinom1,rpois)
+gammas <- c(0, 2, 10)
 
 for(f in 1:3) {
   family <- families[[f]]
+  print(family)
   randfun <- randfuns[[f]]
   invlink <- family$linkinv
   yp <- randfun(n,invlink(Ey))
-  
-  ## run models to extra small lambda 1e-3xlambda.start
-  fitlasso <- gamlr(x, yp, gamma=0, lambda.min.ratio=1e-3, family=family$family, standardize = TRUE) # lasso
-  fitgl <- gamlr(x, yp, gamma=2, lambda.min.ratio=1e-3, family=family$family, standardize = TRUE) # small gamma
-  fitglbv <- gamlr(x, yp, gamma=10, lambda.min.ratio=1e-3, family=family$family, standardize = TRUE) # big gamma
-  
-#   par(mfrow=c(1,3))
-#   ylim = range(c(fitglbv$beta@x))
-#   plot(fitlasso, ylim=ylim, col="navy")
-#   plot(fitgl, ylim=ylim, col="maroon")
-#   plot(fitglbv, ylim=ylim, col="darkorange")
+  if (family$family == "gaussian") {
+    print("standardizing y for comparability with glmnet")
+    yp <- yp / pop.sd(yp)
+  }
   
   # export test data
   data = cbind(yp, x)
@@ -41,8 +36,9 @@ for(f in 1:3) {
   write.table(data,file = paste0(familyfilename,".data.csv"), sep=",",row.names=FALSE,col.names=FALSE)
   
   # export estimates
-  for(fitname in c("fitlasso", "fitgl", "fitglbv")) {
-    fit <- eval(parse(text=fitname))
+  for(gamma in gammas) {
+    fit <- gamlr(x, yp, gamma=gamma, lambda.min.ratio=1e-3, family=family$family, standardize = TRUE)
+    fitname <- paste0("gamma",gamma)
     fitfilename <- paste0(familyfilename,".",fitname)
     
     fittable <- data.frame(fit$lambda,fit$df,fit$deviance,fit$alpha)
