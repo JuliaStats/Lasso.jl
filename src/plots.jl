@@ -17,10 +17,10 @@ function Gadfly.plot(path::RegularizationPath; x=:segment, varnames=nothing, sel
     end
     outdata = deepcopy(indata)
 
-    minAICc=indmin(aicc(path))
+    minAICcix=minAICc(path)
     if selectedvars==:nonzeroatAICc || selectedvars==:all
         for j=1:p
-            if selectedvars==:all || β[j,minAICc]!=0
+            if selectedvars==:all || β[j,minAICcix]!=0
                 indata[varnames[j]]=vec(full(β[j,:]))
             else
                 outdata[varnames[j]]=vec(full(β[j,:]))
@@ -41,7 +41,7 @@ function Gadfly.plot(path::RegularizationPath; x=:segment, varnames=nothing, sel
     rename!(outmdframe,:value,:β)
     xintercept = []
     if showminAICc
-        push!(xintercept,indata[minAICc,x])
+        push!(xintercept,indata[minAICcix,x])
     end
     # Gadfly.plot(inmdframe,x=x,y="β",color="variable",Geom.line,
     #     Stat.xticks(coverage_weight=1.0),

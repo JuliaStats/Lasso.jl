@@ -191,8 +191,6 @@ function Base.show(io::IO, path::LassoPath)
     Base.showarray(io, [path.λ path.pct_dev ncoefs]; header=false)
 end
 
-StatsBase.coef(path::LassoPath) = path.coefs
-
 ## MODEL CONSTRUCTION
 
 # Controls early stopping criteria with automatic λ
@@ -329,6 +327,7 @@ end
 StatsBase.nobs(path::RegularizationPath) = length(path.m.rr.y)
 StatsBase.deviance(path::RegularizationPath) = (1 .- path.pct_dev) .* (path.nulldev * nobs(path))
 dispersion_parameter(path::RegularizationPath) = typeof(path.m) <: LinearModel || GLM.dispersion_parameter(path.m.rr.d)
+
 """ Approximates the degrees-of-freedom in each segment of the path as the number of non zero coefficients
     plus a dispersion parameter when appropriate.
     Note that for GammaLassoPath this may be a crude approximation, as gamlr does this differently.
@@ -352,6 +351,7 @@ function StatsBase.df(path::RegularizationPath)
     end
     dof
 end
+
 function StatsBase.loglikelihood(path::RegularizationPath)
     if typeof(path.m) <: LinearModel
         n = nobs(path)
@@ -360,12 +360,23 @@ function StatsBase.loglikelihood(path::RegularizationPath)
         -0.5*deviance(path)
     end
 end
+
 function StatsBase.aicc(path::RegularizationPath;k=2)
     d = df(path)
     n = nobs(path)
     ic = -2loglikelihood(path) + k*d + k*d.*(d+1)./(n-d-1)
     ic[d.+1 .> n] = realmax(eltype(ic))
     ic
+end
+
+minAICc(path::RegularizationPath;k=2)=indmin(aicc(path;k=k))
+
+function StatsBase.coef(path::RegularizationPath; select=:all)
+    if select == :all
+        path.coefs
+    elseif select == :AICc
+        path.coefs[:,minAICc(path)]
+    end
 end
 
 include("coordinate_descent.jl")
