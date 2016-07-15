@@ -42,7 +42,7 @@ function Base.show(io::IO, path::GammaLassoPath)
         ncoefs[i] = coefs.colptr[i+1] - coefs.colptr[i]
     end
     ncoefs[end] = nnz(coefs) - coefs.colptr[size(coefs, 2)] + 1
-    Base.showarray(io, [path.λ path.pct_dev ncoefs df(path)]; header=false)
+    Base.showarray(io, [path.λ path.pct_dev df(path) aicc(path)]; header=false)
 end
 
 StatsBase.coef(path::GammaLassoPath) = path.coefs
@@ -288,7 +288,7 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::GammaLassoPath{S,T}; 
 
                 converged && break
             end
-            converged || error("IRLS failed to converge in $irls_maxiter iterations at λ = $(curλ)")
+            converged || warn("IRLS failed to converge in $irls_maxiter iterations at λ = $(curλ)")
 
             dev_ratio = dev/nulldev
 

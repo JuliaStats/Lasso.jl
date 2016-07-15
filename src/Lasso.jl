@@ -16,7 +16,7 @@ include("TrendFiltering.jl")
 using Reexport, StatsBase, .Util
 @reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
 using GLM.FPVector, GLM.wrkwt!
-export RegularizationPath, LassoPath, GammaLassoPath, fit, fit!, coef
+export RegularizationPath, LassoPath, GammaLassoPath, fit, fit!, coef, minAICc
 
 ## HELPERS FOR SPARSE COEFFICIENTS
 
