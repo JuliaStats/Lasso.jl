@@ -1,5 +1,5 @@
 using Gadfly, DataFrames
-function Gadfly.plot(path::RegularizationPath; x=:iteration, varnames=nothing, selectedvars=:nonzero)
+function Gadfly.plot(path::RegularizationPath; x=:segment, varnames=nothing, selectedvars=:nonzeroatAICc, showminAICc=true)
     β=coef(path)
     (p,nλ)=size(β)
 
@@ -7,29 +7,49 @@ function Gadfly.plot(path::RegularizationPath; x=:iteration, varnames=nothing, s
         varnames=[symbol("var$i") for i=1:p]
     end
 
-    df=DataFrame()
-    if x==:lambda
-        df[x]=path.λ
-    elseif x==:loglambda
-        df[x]=log(path.λ)
+    indata=DataFrame()
+    if x==:λ
+        indata[x]=path.λ
+    elseif x==:logλ
+        indata[x]=log(path.λ)
     else
-        df[x]=1:nλ
+        indata[x]=1:nλ
     end
+    outdata = deepcopy(indata)
 
-    if selectedvars==:nonzero || selectedvars==:all
+    minAICc=indmin(aicc(path))
+    if selectedvars==:nonzeroatAICc || selectedvars==:all
         for j=1:p
-            if selectedvars==:all || !all(β[j,:].==0)
-                df[varnames[j]]=vec(full(β[j,:]))
+            if selectedvars==:all || β[j,minAICc]!=0
+                indata[varnames[j]]=vec(full(β[j,:]))
+            else
+                outdata[varnames[j]]=vec(full(β[j,:]))
             end
         end
     elseif typeof(selectedvars)==Vector{Int}
         for j in selectedvars
-            df[varnames[j]]=vec(full(β[j,:]))
+            indata[varnames[j]]=vec(full(β[j,:]))
+        end
+        for j in setdiff(1:p,selectedvars)
+            outdata[varnames[j]]=vec(full(β[j,:]))
         end
     end
 
-    df=melt(df,x)
-    rename!(df,:value,:β)
-    Gadfly.plot(df,x=x,y="β",color="variable",Geom.line,
-     Stat.xticks(coverage_weight=1.0))
+    inmdframe=melt(indata,x)
+    outmdframe=melt(outdata,x)
+    rename!(inmdframe,:value,:β)
+    rename!(outmdframe,:value,:β)
+    xintercept = []
+    if showminAICc
+        push!(xintercept,indata[minAICc,x])
+    end
+    # Gadfly.plot(inmdframe,x=x,y="β",color="variable",Geom.line,
+    #     Stat.xticks(coverage_weight=1.0),
+    #     xintercept=xintercept,Geom.vline(color=colorant"black"))
+    Gadfly.plot(
+        layer(inmdframe,x=x,y="β",color="variable",Geom.line,
+        xintercept=xintercept,Geom.vline(color=colorant"black")),
+        layer(outmdframe,x=x,y="β",group="variable",Geom.line,Theme(default_color=colorant"gray"))
+        ,
+        Stat.xticks(coverage_weight=1.0))
 end

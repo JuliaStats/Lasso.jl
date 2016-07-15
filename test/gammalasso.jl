@@ -1,6 +1,9 @@
-# using Lasso
+# Comparing with Matt Taddy's gamlr.R
+# To rebuild the test cases source(gammalasso.R)
+using Lasso
 using GLM, Distributions, GLMNet, FactCheck, DataFrames
 
+# often path length is different because of different stopping rules...
 function issimilarhead(a::AbstractVector,b::AbstractVector;rtol=1e-4)
     n = min(size(a,1),size(b,1))
     isapprox(a[1:n],b[1:n];rtol=rtol) ? true : [a[1:n] b[1:n]]
@@ -10,6 +13,7 @@ function issimilarhead(a::AbstractMatrix,b::AbstractMatrix;rtol=1e-4)
     m = min(size(a,2),size(b,2))
     isapprox(a[1:n,1:m],b[1:n,1:m];rtol=rtol) ? true : [a[1:n,1:m] b[1:n,1:m]]
 end
+
 datapath = joinpath(dirname(@__FILE__), "data")
 
 rtol=1e-2
@@ -22,7 +26,7 @@ facts("GammaLassoPath") do
             (n,p) = size(X)
             for γ in [0 2 10]
                 fitname = "gamma$γ"
-                # get gamlr params and estimates
+                # get gamlr.R params and estimates
                 params = readtable(joinpath(datapath,"gamlr.$family.$fitname.params.csv"))
                 fittable = readtable(joinpath(datapath,"gamlr.$family.$fitname.fit.csv"))
                 gcoefs = convert(Matrix{Float64},readcsv(joinpath(datapath,"gamlr.$family.$fitname.coefs.csv")))
@@ -39,16 +43,21 @@ facts("GammaLassoPath") do
                     @fact issimilarhead(glp.b0,fittable[:fit_alpha];rtol=rtol) --> true
                     @fact issimilarhead(full(glp.coefs'),gcoefs';rtol=rtol) --> true
                     @fact issimilarhead(deviance(glp),fittable[:fit_deviance];rtol=rtol) --> true
-                    @fact issimilarhead(round(df(glp)[2:end]),round(fittable[2:end,:fit_df])) --> true
+                    # @fact issimilarhead(round(df(glp)[2:end]),round(fittable[2:end,:fit_df])) --> true
+                    @fact issimilarhead(loglikelihood(glp),fittable[:fit_logLik];rtol=rtol) --> true
+                    @fact issimilarhead(aicc(glp),fittable[:fit_AICc];rtol=rtol) --> true
+                    # what we really need all these stats for is that the AICc identifies the same minima:
+                    if indmin(aicc(glp)) != endof(aicc(glp)) && indmin(fittable[:fit_AICc]) != endof(fittable[:fit_AICc])
+                        # interior minima
+                        @fact indmin(aicc(glp)) --> indmin(fittable[:fit_AICc])
+                    end
 
                     if γ==0
-
-                        context("Compare with LassoPath") do
-                            lp = fit(LassoPath, X, y, dist, link; λminratio=0.001) #, λ=λ)
-                            @fact glp.λ --> lp.λ
-                            @fact glp.b0 --> lp.b0
-                            @fact glp.coefs --> lp.coefs
-                        end
+                        # Compare with LassoPath
+                        lp = fit(LassoPath, X, y, dist, link; λminratio=0.001) #, λ=λ)
+                        @fact glp.λ --> lp.λ
+                        @fact glp.b0 --> lp.b0
+                        @fact glp.coefs --> lp.coefs
                     end
                 end
             end
@@ -85,14 +94,6 @@ end
 # @fact glp.λ --> lp.λ
 # @fact glp.b0 --> lp.b0
 # @fact glp.coefs --> lp.coefs
-#
-# # using RCall
-# # @rimport gamlr as GAMLR
-# # push!(LOAD_PATH, joinpath(homedir(),"Dropbox/workspace/Text/code"))
-# # using DMR
-# # fit = DMR.gamlr(GAMLR.gamlr(X,y,family=family))
-# # fit.attributes["alpha"]
-# plot(glp;x=:loglambda)
 
 
 

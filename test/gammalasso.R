@@ -23,6 +23,8 @@ Ey <- 4 + 3*x[,1] + -1*x[,2]
 y <- Ey + rnorm(n)
 
 rbinom1 <- function(n,p) {rbinom(n,1,p)}
+pop.var <- function(x) var(x) * (length(x)-1) / length(x)
+pop.sd <- function(x) sqrt(pop.var(x))
 
 families <- list(gaussian(link="identity"),binomial(link="logit"),poisson(link="log"))
 randfuns <- list(rnorm,rbinom1,rpois)
@@ -50,7 +52,9 @@ for(f in 1:3) {
     fitname <- paste0("gamma",gamma)
     fitfilename <- paste0(familyfilename,".",fitname)
     
-    fittable <- data.frame(fit$lambda,fit$df,fit$deviance,fit$alpha)
+    fit$AICc <- AICc(fit)
+    fit$logLik <- logLik(fit)
+    fittable <- data.frame(fit$lambda,fit$df,fit$deviance,fit$alpha,fit$logLik,fit$AICc)
     write.table(fittable,file = paste0(fitfilename,".fit.csv") ,sep=",",row.names=FALSE)
     
     coefs <- as.matrix(fit$beta)
