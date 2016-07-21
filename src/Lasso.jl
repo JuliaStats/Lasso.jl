@@ -16,7 +16,7 @@ include("TrendFiltering.jl")
 using Reexport, StatsBase, .Util
 @reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
 using GLM.FPVector, GLM.wrkwt!
-export RegularizationPath, LassoPath, GammaLassoPath, fit, fit!, coef, minAICc
+export RegularizationPath, LassoPath, GammaLassoPath, fit, fit!, coef, minAICc, intercept
 
 ## HELPERS FOR SPARSE COEFFICIENTS
 
@@ -376,6 +376,14 @@ function StatsBase.coef(path::RegularizationPath; select=:all)
         path.coefs
     elseif select == :AICc
         path.coefs[:,minAICc(path)]
+    end
+end
+
+function intercept(path::RegularizationPath; select=:all)
+    if select == :all
+        path.b0
+    elseif select == :AICc
+        path.b0[minAICc(path)]
     end
 end
 

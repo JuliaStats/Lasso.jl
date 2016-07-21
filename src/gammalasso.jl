@@ -45,8 +45,6 @@ function Base.show(io::IO, path::GammaLassoPath)
     Base.showarray(io, [path.λ path.pct_dev df(path) aicc(path)]; header=false)
 end
 
-StatsBase.coef(path::GammaLassoPath) = path.coefs
-
 ## MODEL CONSTRUCTION
 
 "Compute coeffiecient specific weights vector ω_j^t based on previous iteration coefficients β"
@@ -304,7 +302,7 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::GammaLassoPath{S,T}; 
 
             i += 1
             computeω!(cd.ω,γ,newcoef) # use β^{i-1} for β^{i} gamma lasso weights
-            verbose && println("$i: ω=$(cd.ω)")
+            verbose && println("$i: λ=$curλ, pct_dev=$(pct_dev[i])")
         end
     end
 
@@ -370,7 +368,7 @@ function StatsBase.fit!{S<:LinearModel,T}(path::GammaLassoPath{S,T}; verbose::Bo
 
         i += 1
         computeω!(cd.ω,γ,newcoef) # use β^{i-1} for β^{i} gamma lasso weights
-        verbose && println("$i: ω=$(cd.ω)")
+        verbose && println("$i: λ=$curλ, pct_dev=$(pct_dev[i])")
     end
 
     path.λ = path.λ[1:i]
@@ -382,205 +380,3 @@ function StatsBase.fit!{S<:LinearModel,T}(path::GammaLassoPath{S,T}; verbose::Bo
         scale!(Xnorm, path.coefs)
     end
 end
-
-# type γNaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator} <: NaiveCoordinateDescent{T,Intercept,M,S}
-#     X::M                          # original design matrix
-#     μy::T                         # mean of y at current weights
-#     μX::Vector{T}                 # mean of X at current weights (in predictor order)
-#     Xssq::Vector{T}               # weighted sum of squares of each column of X (in coefficient order)
-#     residuals::Vector{T}          # y - Xβ (unscaled with centered X)
-#     residualoffset::T             # offset of residuals (used only when X is sparse)
-#     weights::Vector{T}            # weights for each observation
-#     oldy::Vector{T}               # old y vector (for updating residuals without matrix multiplication)
-#     weightsum::T                  # sum(weights)
-#     coefitr::S                    # coefficient iterator
-#     dev::T                        # last deviance
-#     α::T                          # elastic net parameter
-#     ω::Vector{T}                  # controls the concavity of the regularization path (γ=0 is Lasso) with size(X,2)
-#     maxiter::Int                  # maximum number of iterations
-#     maxncoef::Int                 # maximum number of coefficients
-#     tol::T                        # tolerance
-#
-#     γNaiveCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefitr::S) =
-#         new(X, zero(T), zeros(T, size(X, 2)), zeros(T, maxncoef), Array(T, size(X, 1)), zero(T),
-#             Array(T, size(X, 1)), Array(T, size(X, 1)), convert(T, NaN), coefitr, convert(T, NaN),
-#             α, ones(T, size(X, 2)), typemax(Int), maxncoef, tol)
-# end
-#
-# type γCovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator} <: CovarianceCoordinateDescent{T,Intercept,M}
-#     X::M                          # original design matrix
-#     μy::T                         # mean of y at current weights
-#     μX::Vector{T}                 # mean of X at current weights
-#     yty::T                        # y'y (scaled by weights)
-#     Xty::Vector{T}                # X'y (scaled by weights)
-#     Xssq::Vector{T}               # weighted sum of squares of each column of X
-#     XtX::Matrix{T}                # X'X (scaled by weights, in order of coefficients)
-#     tmp::Vector{T}                # scratch used when computing X'X
-#     weights::Vector{T}            # weights for each observation
-#     weightsum::T                  # sum(weights)
-#     coefitr::S                    # coefficient iterator
-#     dev::T                        # last deviance
-#     α::T                          # elastic net parameter
-#     ω::Vector{T}                  # controls the concavity of the regularization path (γ=0 is Lasso) with size(X,2)
-#     maxiter::Int                  # maximum number of iterations
-#     maxncoef::Int                 # maximum number of coefficients
-#     tol::T                        # tolerance
-#
-#     function γCovarianceCoordinateDescent(X::M, α::T, ω::Vector{T}, maxncoef::Int, tol::T, coefiter::S)
-#         new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Array(T, size(X, 2)),
-#             Array(T, size(X, 2)), Array(T, maxncoef, size(X, 2)), Array(T, size(X, 1)),
-#             Array(T, size(X, 1)), convert(T, NaN), coefiter, convert(T, NaN), α, ones(T, size(X, 2)),
-#             typemax(Int), maxncoef, tol)
-#     end
-# end
-
-# function Pω{T}(α::T, β::SparseCoefficients{T}, ω::Vector{T})
-#     x = zero(T)
-#     if length(ω)==0
-#         @inbounds @simd for i = 1:nnz(β)
-#             x += ((1 - α)/2*abs2(β.coef[i]) + α*abs(β.coef[i]))
-#         end
-#     else
-#         @inbounds @simd for i = 1:nnz(β)
-#             x += ω[β.coef2predictor[i]] * ((1 - α)/2*abs2(β.coef[i]) + α*abs(β.coef[i]))
-#         end
-#     end
-#     x
-# end
-
-# # Performs the cycle of all predictors
-# function cycle!{T}(coef::SparseCoefficients{T}, cd::γNaiveCoordinateDescent{T}, λ::T, all::Bool)
-#     @extractfields cd residuals X weights Xssq α ω
-#
-#     maxdelta = zero(T)
-#     @inbounds if all
-#         # Use all predictors for first and last iterations
-#         for ipred = 1:size(X, 2)
-#             v = compute_grad(cd, X, residuals, weights, ipred)
-#
-#             icoef = coef.predictor2coef[ipred]
-#             if icoef != 0
-#                 oldcoef = coef.coef[icoef]
-#                 v += Xssq[icoef]*oldcoef
-#             else
-#                 # Adding a new variable to the model
-#                 λωj = λ*ω[ipred]
-#                 abs(v) < λωj*α && continue
-#                 oldcoef = zero(T)
-#                 nnz(coef) > cd.maxncoef &&
-#                     error("maximum number of coefficients $(cd.maxncoef) exceeded at λ = $λ (λωj=$λωj)")
-#                 icoef = addcoef!(coef, ipred)
-#                 cd.coefitr = addcoef(cd.coefitr, icoef)
-#                 Xssq[icoef] = computeXssq(cd, ipred)
-#             end
-#             # TODO: Should we just multiply v by cd.ω[ipred] ?
-#             newcoef = S(v, λωj*α)/(Xssq[icoef] + λωj*(1 - α))
-#
-#             maxdelta = max(maxdelta, update_coef!(cd, coef, newcoef, icoef, ipred))
-#         end
-#     else
-#         # Iterate over only the predictors already in the model
-#         for icoef = cd.coefitr
-#             oldcoef = coef.coef[icoef]
-#             oldcoef == 0 && continue
-#             ipred = coef.coef2predictor[icoef]
-#             v = Xssq[icoef]*oldcoef + compute_grad(cd, X, residuals, weights, ipred)
-#             λωj = λ*ω[ipred]
-#             newcoef = S(v, λωj*α)/(Xssq[icoef] + λωj*(1 - α))
-#
-#             maxdelta = max(maxdelta, update_coef!(cd, coef, newcoef, icoef, ipred))
-#         end
-#     end
-#     maxdelta
-# end
-
-# # Performs the cycle of all predictors
-# function cycle!{T}(coef::SparseCoefficients{T}, cd::γCovarianceCoordinateDescent{T}, λ::T, all::Bool)
-#     @extractfields cd X Xty XtX Xssq α ω
-#
-#     maxdelta = zero(T)
-#     if all
-#         @inbounds for ipred = 1:length(Xty)
-#             # Use all predictors for first and last iterations
-#             s = Xty[ipred] - compute_gradient(cd, XtX, coef, ipred)
-#
-#             icoef = coef.predictor2coef[ipred]
-#             if icoef != 0
-#                 oldcoef = coef.coef[icoef]
-#                 s += getXtX(cd, XtX, icoef, ipred)*oldcoef
-#             else
-#                 oldcoef = zero(T)
-#             end
-#
-#             λωj = λ*ω[ipred]
-#             newcoef = S(s, λωj*α)/(Xssq[ipred] + λωj*(1 - α))
-#             if oldcoef != newcoef
-#                 if icoef == 0
-#                     # Adding a new variable to the model
-#                     nnz(coef) > cd.maxncoef &&
-#                         error("maximum number of coefficients $(cd.maxncoef) exceeded at λ = $λ (λωj=$λωj)")
-#                     icoef = addcoef!(coef, ipred)
-#                     cd.coefitr = addcoef(cd.coefitr, icoef)
-#
-#                     # Compute cross-product with predictors
-#                     computeXtX!(cd, coef, icoef, ipred)
-#                 end
-#                 maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[ipred])
-#                 coef.coef[icoef] = newcoef
-#             end
-#         end
-#     else
-#         # Iterate over only the predictors already in the model
-#         @inbounds for icoef = cd.coefitr
-#             ipred = coef.coef2predictor[icoef]
-#             oldcoef = coef.coef[icoef]
-#             oldcoef == 0 && continue
-#             s = Xty[ipred] + getXtX(cd, XtX, icoef, ipred)*oldcoef - compute_gradient(cd, XtX, coef, ipred)
-#             λωj = λ*ω[ipred]
-#             newcoef = coef.coef[icoef] = S(s, λωj*α)/(Xssq[ipred] + λωj*(1 - α))
-#             maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[ipred])
-#         end
-#     end
-#     maxdelta
-# end
-
-# function cdfit!{T}(coef::SparseCoefficients{T}, cd::Union{γNaiveCoordinateDescent{T},γCovarianceCoordinateDescent{T}}, λ, criterion)
-#     maxiter = cd.maxiter
-#     tol = cd.tol
-#     n = size(cd.X, 1)
-#
-#     obj = convert(T, Inf)
-#     objold = convert(T, Inf)
-#     dev = convert(T, Inf)
-#     prev_converged = false
-#     converged = true
-#     b0 = intercept(coef, cd)
-#
-#     iter = 0
-#     for iter = 1:maxiter
-#         oldb0 = b0
-#         maxdelta = cycle!(coef, cd, λ, converged)
-#         b0 = intercept(coef, cd)
-#         maxdelta = max(maxdelta, abs2(oldb0 - b0)*cd.weightsum)
-#
-#         # Test for convergence
-#         prev_converged = converged
-#         if criterion == :obj
-#             objold = obj
-#             dev = ssr(coef, cd)
-#             obj = dev/2 + λ*Pω(cd.α, coef, cd.ω)
-#             converged = abs(objold - obj) < tol*obj
-#         elseif criterion == :coef
-#             converged = maxdelta < tol
-#         end
-#
-#         # Require two converging steps to return. After the first, we
-#         # will iterate through all variables
-#         prev_converged && converged && break
-#     end
-#
-#     (!prev_converged || !converged) &&
-#         error("coordinate descent failed to converge in $maxiter iterations at λ = $λ")
-#
-#     cd.dev = criterion == :coef ? ssr(coef, cd) : dev
-#     iter
