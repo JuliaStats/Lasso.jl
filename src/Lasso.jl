@@ -16,7 +16,7 @@ include("TrendFiltering.jl")
 using Reexport, StatsBase, .Util
 @reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
 using GLM.FPVector, GLM.wrkwt!
-export RegularizationPath, LassoPath, GammaLassoPath, fit, fit!, coef, minAICc, intercept
+export RegularizationPath, LassoPath, GammaLassoPath, fit, fit!, coef, minAICc, hasintercept
 
 ## HELPERS FOR SPARSE COEFFICIENTS
 
@@ -337,7 +337,7 @@ function StatsBase.df(path::RegularizationPath)
     βs = coef(path)
     dof = zeros(Int,nλ)
     for s=1:nλ
-        dof[s] = length(nzrange(βs, s))
+        dof[s] = sum(βs[:,s].!=0)
     end
 
     if dispersion_parameter(path)
@@ -345,10 +345,6 @@ function StatsBase.df(path::RegularizationPath)
         dof+=1
     end
 
-    if any(path.b0.!=0)
-        # add one for intercept
-        dof+=1
-    end
     dof
 end
 
@@ -371,21 +367,32 @@ end
 
 minAICc(path::RegularizationPath;k=2)=indmin(aicc(path;k=k))
 
+hasintercept(path::RegularizationPath) = hasintercept(path.m.pp)
+
+#Consistent with StatsBase.coef, if the model has an intercept it is included.
 function StatsBase.coef(path::RegularizationPath; select=:all)
     if select == :all
-        path.coefs
+        if hasintercept(path)
+            vcat(path.b0',path.coefs)
+        else
+            path.coefs
+        end
     elseif select == :AICc
-        path.coefs[:,minAICc(path)]
+        if hasintercept(path)
+            vec(vcat(path.b0[minAICc(path)],path.coefs[:,minAICc(path)]))
+        else
+            path.coefs[:,minAICc(path)]
+        end
     end
 end
 
-function intercept(path::RegularizationPath; select=:all)
-    if select == :all
-        path.b0
-    elseif select == :AICc
-        path.b0[minAICc(path)]
-    end
-end
+# function intercept(path::RegularizationPath; select=:all)
+#     if select == :all
+#         path.b0
+#     elseif select == :AICc
+#         path.b0[minAICc(path)]
+#     end
+# end
 
 include("coordinate_descent.jl")
 include("gammalasso.jl")

@@ -279,6 +279,10 @@ function ssr{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T})
     s
 end
 
+# Does the linear predictor have an intercept?
+hasintercept{T}(cd::CoordinateDescent{T,false}) = false
+hasintercept{T}(cd::CoordinateDescent{T,true}) = true
+
 # Value of the intercept
 intercept{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T,false}) = zero(T)
 function intercept{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T,true})
