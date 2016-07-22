@@ -286,7 +286,7 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::GammaLassoPath{S,T}; 
 
                 converged && break
             end
-            converged || warn("IRLS failed to converge in $irls_maxiter iterations at λ = $(curλ)")
+            converged || error("IRLS failed to converge in $irls_maxiter iterations at λ = $(curλ)")
 
             dev_ratio = dev/nulldev
 
