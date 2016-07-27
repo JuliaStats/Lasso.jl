@@ -64,8 +64,8 @@ facts("GammaLassoPath") do
 
                     # test plots
                     p = plot(glp)
-                    filename = joinpath(plotspath,"$family.$fitname.path.pdf")
-                    draw(PDF(filename,9inch,11inch),p)
+                    filename = joinpath(plotspath,"$family.$fitname.path.png")
+                    draw(PNG(filename,9inch,11inch),p)
                     @fact isfile(filename) --> true
 
                 end
