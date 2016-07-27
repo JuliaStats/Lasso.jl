@@ -300,7 +300,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
         # Fit to find null deviance
         # Maybe we should reuse this GlmResp object?
         nullmodel = fit(GeneralizedLinearModel, ones(T, n, ifelse(intercept, 1, 0)), y, d, l;
-                        wts=wts, offset=offset, convTol=irls_tol)
+                        wts=wts, offset=offset, convTol=irls_tol, dofit=dofit)
         nulldev = deviance(nullmodel)
 
         if autoλ
@@ -320,7 +320,15 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
 
     # Fit path
     path = LassoPath{typeof(model),T}(model, nulldev, nullb0, λ, autoλ, Xnorm)
-    dofit && fit!(path; irls_tol=irls_tol, fitargs...)
+    if dofit
+        fit!(path; irls_tol=irls_tol, fitargs...)
+    else
+        path.λ = zeros(T, 0)
+        path.pct_dev = zeros(T, 0)
+        path.coefs = spzeros(T, p, 0)
+        path.b0 = zeros(T, 0)
+        path.niter = 0
+    end
     path
 end
 
@@ -371,6 +379,15 @@ hasintercept(path::RegularizationPath) = hasintercept(path.m.pp)
 
 #Consistent with StatsBase.coef, if the model has an intercept it is included.
 function StatsBase.coef(path::RegularizationPath; select=:all)
+    if length(path.λ) == 0
+        X = path.m.pp.X
+        p = size(X,2)
+        if hasintercept(path)
+            p+=1
+        end
+        return zeros(eltype(X),p)
+    end
+
     if select == :all
         if hasintercept(path)
             vcat(path.b0',path.coefs)

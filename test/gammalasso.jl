@@ -1,7 +1,7 @@
 # Comparing with Matt Taddy's gamlr.R
 # To rebuild the test cases source(gammalasso.R)
 using Lasso
-using GLM, FactCheck, DataFrames
+using GLM, FactCheck, DataFrames, Gadfly
 
 # often path length is different because of different stopping rules...
 function issimilarhead(a::AbstractVector,b::AbstractVector;rtol=1e-4)
@@ -15,6 +15,8 @@ function issimilarhead(a::AbstractMatrix,b::AbstractMatrix;rtol=1e-4)
 end
 
 datapath = joinpath(dirname(@__FILE__), "data")
+plotspath = joinpath(dirname(@__FILE__), "plots")
+mkpath(plotspath)
 
 rtol=1e-2
 facts("GammaLassoPath") do
@@ -59,6 +61,13 @@ facts("GammaLassoPath") do
                         @fact glp.b0 --> lp.b0
                         @fact glp.coefs --> lp.coefs
                     end
+
+                    # test plots
+                    p = plot(glp)
+                    filename = joinpath(plotspath,"$family.$fitname.path.pdf")
+                    draw(PDF(filename,9inch,11inch),p)
+                    @fact isfile(filename) --> true
+
                 end
             end
         end

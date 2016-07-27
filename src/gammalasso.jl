@@ -45,6 +45,13 @@ function Base.show(io::IO, path::GammaLassoPath)
     Base.showarray(io, [path.λ path.pct_dev df(path) aicc(path)]; header=false)
 end
 
+# ## Error handling, holds a copy of the current path to debug
+# immutable ConvergenceException <: Exception
+#     msg
+#     debugvars
+# end
+#
+
 ## MODEL CONSTRUCTION
 
 "Compute coeffiecient specific weights vector ω_j^t based on previous iteration coefficients β"
@@ -151,7 +158,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{GammaLassoPath},
         # Fit to find null deviance
         # Maybe we should reuse this GlmResp object?
         nullmodel = fit(GeneralizedLinearModel, ones(T, n, ifelse(intercept, 1, 0)), y, d, l;
-                        wts=wts, offset=offset, convTol=irls_tol)
+                        wts=wts, offset=offset, convTol=irls_tol, dofit=dofit)
         nulldev = deviance(nullmodel)
 
         if autoλ
@@ -171,7 +178,15 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{GammaLassoPath},
 
     # Fit path
     path = GammaLassoPath{typeof(model),T}(model, nulldev, nullb0, λ, autoλ, γ, Xnorm)
-    dofit && fit!(path; irls_tol=irls_tol, fitargs...)
+    if dofit
+        fit!(path; irls_tol=irls_tol, fitargs...)
+    else
+        path.λ = zeros(T, 0)
+        path.pct_dev = zeros(T, 0)
+        path.coefs = spzeros(T, p, 0)
+        path.b0 = zeros(T, 0)
+        path.niter = 0
+    end
     path
 end
 
@@ -196,7 +211,7 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::GammaLassoPath{S,T}; 
         irls_tol *= path.nulldev/2
     end
 
-    @extractfields cd X α
+    @extractfields cd X α ω
     @extractfields r offset eta wrkresid
     coefs = spzeros(T, size(X, 2), nλ)
     b0s = zeros(T, nλ)
@@ -247,21 +262,30 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::GammaLassoPath{S,T}; 
                 # Compute Elastic Net objective
                 objold = obj
                 dev = deviance(r)
-                obj = dev/2 + curλ*P(α, newcoef, cd.ω)
+                obj = dev/2 + curλ*P(α, newcoef, ω)
 
                 if obj > objold + length(scratchmu)*eps(objold)
+                    verbose && println("step-halving because obj=$obj > $objold + $(length(scratchmu)*eps(objold)) = length(scratchmu)*eps(objold)")
                     f = 1.0
                     b0diff = b0 - oldb0
+                    coefdiff = SparseCoefficients{T}(size(X, 2))
+                    copy!(coefdiff,newcoef)
+                    for icoef = 1:nnz(newcoef)
+                        oldcoefval = icoef > nnz(oldcoef) ? zero(T) : oldcoef.coef[icoef]
+                        coefdiff.coef[icoef] = newcoef.coef[icoef] - oldcoefval
+                    end
                     while obj > objold
+                        verbose && println("f=$f: $obj > $objold, dev=$dev, b0=$b0, newcoef=$newcoef")
+                        # f /= 2.; f > minStepFac || throw(ConvergenceException("step-halving failed at beta = $(newcoef)",(obj,objold,path,f,newcoef,oldcoef,b0,oldb0,b0diff,coefdiff,scratchmu,cd,r,α,curλ)))
                         f /= 2.; f > minStepFac || error("step-halving failed at beta = $(newcoef)")
                         for icoef = 1:nnz(newcoef)
                             oldcoefval = icoef > nnz(oldcoef) ? zero(T) : oldcoef.coef[icoef]
-                            newcoef.coef[icoef] = oldcoefval+f*(newcoef.coef[icoef] - oldcoefval)
+                            newcoef.coef[icoef] = oldcoefval+f*(coefdiff.coef[icoef])
                         end
                         b0 = oldb0+f*b0diff
                         updatemu!(r, linpred!(scratchmu, cd, newcoef, b0))
                         dev = deviance(r)
-                        obj = dev/2 + curλ*P(α, newcoef, cd.ω)
+                        obj = dev/2 + curλ*P(α, newcoef, ω)
                     end
                 end
 
@@ -300,9 +324,9 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::GammaLassoPath{S,T}; 
                 break
             end
 
-            i += 1
-            computeω!(cd.ω,γ,newcoef) # use β^{i-1} for β^{i} gamma lasso weights
             verbose && println("$i: λ=$curλ, pct_dev=$(pct_dev[i])")
+            i += 1
+            computeω!(ω,γ,newcoef) # use β^{i-1} for β^{i} gamma lasso weights
         end
     end
 
@@ -366,9 +390,9 @@ function StatsBase.fit!{S<:LinearModel,T}(path::GammaLassoPath{S,T}; verbose::Bo
             break
         end
 
+        verbose && println("$i: λ=$curλ, pct_dev=$(pct_dev[i])")
         i += 1
         computeω!(cd.ω,γ,newcoef) # use β^{i-1} for β^{i} gamma lasso weights
-        verbose && println("$i: λ=$curλ, pct_dev=$(pct_dev[i])")
     end
 
     path.λ = path.λ[1:i]

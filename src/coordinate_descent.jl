@@ -717,13 +717,21 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbo
                 obj = dev/2 + curλ*P(α, newcoef, ω)
 
                 if obj > objold + length(scratchmu)*eps(objold)
+                    verbose && println("step-halving because obj=$obj > $objold + $(length(scratchmu)*eps(objold)) = length(scratchmu)*eps(objold)")
                     f = 1.0
                     b0diff = b0 - oldb0
+                    coefdiff = SparseCoefficients{T}(size(X, 2))
+                    copy!(coefdiff,newcoef)
+                    for icoef = 1:nnz(newcoef)
+                        oldcoefval = icoef > nnz(oldcoef) ? zero(T) : oldcoef.coef[icoef]
+                        coefdiff.coef[icoef] = newcoef.coef[icoef] - oldcoefval
+                    end
                     while obj > objold
+                        verbose && println("f=$f: $obj > $objold, dev=$dev, b0=$b0, newcoef=$newcoef")
                         f /= 2.; f > minStepFac || error("step-halving failed at beta = $(newcoef)")
                         for icoef = 1:nnz(newcoef)
                             oldcoefval = icoef > nnz(oldcoef) ? zero(T) : oldcoef.coef[icoef]
-                            newcoef.coef[icoef] = oldcoefval+f*(newcoef.coef[icoef] - oldcoefval)
+                            newcoef.coef[icoef] = oldcoefval+f*(coefdiff.coef[icoef])
                         end
                         b0 = oldb0+f*b0diff
                         updatemu!(r, linpred!(scratchmu, cd, newcoef, b0))
@@ -767,6 +775,7 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbo
                 break
             end
 
+            verbose && println("$i: λ=$curλ, pct_dev=$(pct_dev[i])")
             i += 1
         end
     end
@@ -831,6 +840,7 @@ function StatsBase.fit!{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=fa
             break
         end
 
+        verbose && println("$i: λ=$curλ, pct_dev=$(pct_dev[i])")
         i += 1
     end
 

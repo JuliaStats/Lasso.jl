@@ -1,6 +1,10 @@
 using Gadfly, DataFrames
 function Gadfly.plot(path::RegularizationPath, gadfly_args...; x=:segment, varnames=nothing, selectedvars=:nonzeroatAICc, showminAICc=true)
     β=coef(path)
+    if hasintercept(path)
+        β = β[2:end,:]
+    end
+
     (p,nλ)=size(β)
 
     if varnames==nothing
@@ -38,10 +42,10 @@ function Gadfly.plot(path::RegularizationPath, gadfly_args...; x=:segment, varna
 
     inmdframe=melt(indata,x)
     outmdframe=melt(outdata,x)
-    rename!(inmdframe,:value,:β)
-    rename!(outmdframe,:value,:β)
-    inmdframe = inmdframe[convert(BitArray,map(b->!isnan(b),inmdframe[:β])),:]
-    outmdframe = outmdframe[convert(BitArray,map(b->!isnan(b),outmdframe[:β])),:]
+    rename!(inmdframe,:value,:coefficients)
+    rename!(outmdframe,:value,:coefficients)
+    inmdframe = inmdframe[convert(BitArray,map(b->!isnan(b),inmdframe[:coefficients])),:]
+    outmdframe = outmdframe[convert(BitArray,map(b->!isnan(b),outmdframe[:coefficients])),:]
 
     xintercept = []
     if showminAICc
@@ -50,10 +54,10 @@ function Gadfly.plot(path::RegularizationPath, gadfly_args...; x=:segment, varna
 
     layers=Vector{Layer}()
     if size(inmdframe,1) > 0
-      append!(layers, layer(inmdframe,x=x,y="β",color="variable",Geom.line,xintercept=xintercept,Geom.vline(color=colorant"black")))
+      append!(layers, layer(inmdframe,x=x,y="coefficients",color="variable",Geom.line,xintercept=xintercept,Geom.vline(color=colorant"black")))
     end
     if size(outmdframe,1) > 0
-      append!(layers,layer(outmdframe,x=x,y="β",group="variable",Geom.line,Theme(default_color=colorant"lightgray")))
+      append!(layers,layer(outmdframe,x=x,y="coefficients",group="variable",Geom.line,Theme(default_color=colorant"lightgray")))
     end
 
     Gadfly.plot(layers..., Stat.xticks(coverage_weight=1.0), gadfly_args...)
