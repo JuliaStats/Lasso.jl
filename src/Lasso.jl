@@ -335,7 +335,9 @@ end
 
 StatsBase.nobs(path::RegularizationPath) = length(path.m.rr.y)
 StatsBase.deviance(path::RegularizationPath) = (1 .- path.pct_dev) .* (path.nulldev * nobs(path))
-dispersion_parameter(path::RegularizationPath) = typeof(path.m) <: LinearModel || GLM.dispersion_parameter(path.m.rr.d)
+
+# TODO would be better to use GLM.dispersion_parameter, but that breaks backward comp.
+dispersion_parameter(path::RegularizationPath) = typeof(path.m) <: LinearModel || typeof(path.m.rr.d) in (Gamma, Normal, InverseGaussian)
 
 function StatsBase.loglikelihood(path::RegularizationPath)
     if typeof(path.m) <: LinearModel
