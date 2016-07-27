@@ -1,4 +1,4 @@
-using Gadfly, DataFrames
+using Gadfly, DataFrames, Compat
 function Gadfly.plot(path::RegularizationPath, gadfly_args...; x=:segment, varnames=nothing, selectedvars=:nonzeroatAICc, showminAICc=true)
     β=coef(path)
     if hasintercept(path)
@@ -52,7 +52,7 @@ function Gadfly.plot(path::RegularizationPath, gadfly_args...; x=:segment, varna
         push!(xintercept,indata[minAICcix,x])
     end
 
-    layers=Vector{Layer}()
+    layers=@compat Vector{Layer}()
     if size(inmdframe,1) > 0
       append!(layers, layer(inmdframe,x=x,y="coefficients",color="variable",Geom.line,xintercept=xintercept,Geom.vline(color=colorant"black")))
     end
