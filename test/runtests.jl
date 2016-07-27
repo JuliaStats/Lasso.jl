@@ -1,7 +1,7 @@
 using FactCheck
 
-include("lasso.jl")
 include("gammalasso.jl")
+include("lasso.jl")
 include("fusedlasso.jl")
 include("trendfiltering.jl")
 

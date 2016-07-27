@@ -64,8 +64,8 @@ facts("GammaLassoPath") do
 
                     # test plots
                     p = plot(glp)
-                    filename = joinpath(plotspath,"$family.$fitname.path.png")
-                    draw(PNG(filename,9inch,11inch),p)
+                    filename = joinpath(plotspath,"$family.$fitname.path.svg")
+                    draw(SVG(filename,5inch,5inch),p)
                     @fact isfile(filename) --> true
                 end
             end
@@ -73,7 +73,7 @@ facts("GammaLassoPath") do
     end
 end
 
-# comment this line to see plots after test finishes in Lasso/test/plots/
+# comment the next line to see plots after test finishes in Lasso/test/plots/
 rm(plotspath;recursive=true)
 
 ## the following code is useful for understanding comparison failures
