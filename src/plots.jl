@@ -47,7 +47,7 @@ function Gadfly.plot(path::RegularizationPath, gadfly_args...; x=:segment, varna
     inmdframe = inmdframe[convert(BitArray,map(b->!isnan(b),inmdframe[:coefficients])),:]
     outmdframe = outmdframe[convert(BitArray,map(b->!isnan(b),outmdframe[:coefficients])),:]
 
-    xintercept = []
+    xintercept = Float64[]
     if showminAICc
         push!(xintercept,indata[minAICcix,x])
     end
