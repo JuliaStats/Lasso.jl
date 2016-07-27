@@ -67,12 +67,14 @@ facts("GammaLassoPath") do
                     filename = joinpath(plotspath,"$family.$fitname.path.png")
                     draw(PNG(filename,9inch,11inch),p)
                     @fact isfile(filename) --> true
-
                 end
             end
         end
     end
 end
+
+# comment this line to see plots after test finishes in Lasso/test/plots/
+rm(plotspath;recursive=true)
 
 ## the following code is useful for understanding comparison failures
 #

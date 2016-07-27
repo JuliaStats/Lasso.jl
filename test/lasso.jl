@@ -1,4 +1,4 @@
-using Lasso, GLM, Distributions, GLMNet, FactCheck
+using Lasso, GLM, Distributions, GLMNet, FactCheck, Compat
 
 datapath = joinpath(dirname(@__FILE__), "data")
 
@@ -29,7 +29,7 @@ end
 function gen_penalty_factors(X,nonone_penalty_factors;sparcity=0.7)
     if nonone_penalty_factors
         penalty_factor = ones(size(X,2))
-        nonone = Int(floor(size(X,2)*(1-sparcity)))
+        nonone = @compat(Int(floor(size(X,2)*(1-sparcity))))
         srand(7337)
         penalty_factor[1:nonone] = rand(Float64,nonone)
         penalty_factor_glmnet = penalty_factor
