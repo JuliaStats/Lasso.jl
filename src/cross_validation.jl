@@ -20,12 +20,10 @@ function cross_validate_path{T<:AbstractFloat,V<:FPVector}(path::RegularizationP
     else
      error("unknown path typeof(path) $(typeof(path))")
     end
-    # temp storage for devs
-    devresidv = zeros(T,n,nλ)
     for (j, train_inds) in enumerate(gen)
      test_inds = setdiff(1:n, train_inds)
      foldpath = fit(pathType,X[train_inds,:],y[train_inds],d,l;λ=λ,fitargs...)
-     oosdevs[:,j] = deviance!(devresidv,foldpath,X[test_inds,:],y[test_inds])
+     oosdevs[:,j] = deviance(foldpath,X[test_inds,:],y[test_inds])
     end
     oosdevs
 end
@@ -53,30 +51,6 @@ gen = Kfold(nobs(path),7)
 fitargs = ()
 T = eltype(λ)
 @time oosdevs = cross_validate_path(path,X,y)
-
-λ = path.λ
-n = nobs(path)
-nfolds = length(gen)
-nλ = length(λ)
-d = distfun(path)
-l = linkfun(path)
-oosdevs = zeros(T,nλ,nfolds)
-#TODO: find a more elegant way of identifying pathType
-if typeof(path) <: LassoPath
- pathType = LassoPath
-elseif typeof(path) <: GammaLassoPath
- pathType = GammaLassoPath
-else
- error("unknown path typeof(path) $(typeof(path))")
-end
-# temp storage for devs
-devresidv = zeros(T,n,nλ)
-for (j, train_inds) in enumerate(gen)
- test_inds = setdiff(1:n, train_inds)
- foldpath = fit(pathType,X[train_inds,:],y[train_inds],d,l;λ=λ,fitargs...)
- oosdevs[:,j] = deviance!(devresidv,foldpath,X[test_inds,:],y[test_inds])
-end
-oosdevs
 
 using ProfileView
 Profile.init(delay=0.001)
