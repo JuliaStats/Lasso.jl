@@ -1,6 +1,6 @@
 # Comparing with Matt Taddy's gamlr.R
 # To rebuild the test cases source(gammalasso.R)
-using Lasso
+# using Lasso
 using GLM, FactCheck, DataFrames, Gadfly
 
 # often path length is different because of different stopping rules...
@@ -44,7 +44,9 @@ facts("GammaLassoPath") do
                     @fact issimilarhead(glp.λ,fittable[:fit_lambda];rtol=rtol) --> true
                     @fact issimilarhead(glp.b0,fittable[:fit_alpha];rtol=rtol) --> true
                     @fact issimilarhead(full(glp.coefs'),gcoefs';rtol=rtol) --> true
-                    @fact issimilarhead(deviance(glp),fittable[:fit_deviance];rtol=rtol) --> true
+                    # we follow GLM.jl convention where deviance is scaled by nobs, while in gamlr it is not
+                    @fact issimilarhead(deviance(glp),fittable[:fit_deviance]/nobs(glp);rtol=rtol) --> true
+                    @fact issimilarhead(deviance(glp,X,y),fittable[:fit_deviance]/nobs(glp);rtol=rtol) --> true
                     # @fact issimilarhead(round(df(glp)[2:end]),round(fittable[2:end,:fit_df])) --> true
                     @fact issimilarhead(loglikelihood(glp),fittable[:fit_logLik];rtol=rtol) --> true
                     @fact issimilarhead(aicc(glp),fittable[:fit_AICc];rtol=rtol) --> true
@@ -90,30 +92,47 @@ rm(plotspath;recursive=true)
 # fittable = readtable(joinpath(datapath,"gamlr.$family.$fitname.fit.csv"))
 # gcoefs = convert(Matrix{Float64},readcsv(joinpath(datapath,"gamlr.$family.$fitname.coefs.csv")))
 # family = params[1,:fit_family]
-# λ = convert(Vector{Float64},fittable[:fit_lambda]) # should be set to nothing evenatually
+# λ = nothing #convert(Vector{Float64},fittable[:fit_lambda]) # should be set to nothing evenatually
 # # fit julia version
-# glp = fit(GammaLassoPath, X, y, dist, link, λ=nothing,γ=γ,standardize=true, λminratio=0.001)
+# glp = fit(GammaLassoPath, X, y, dist, link, λ=λ,γ=γ,standardize=true, λminratio=0.001)
 #
 # # compare
 # rtol=1e-3
 # @fact issimilarhead(glp.λ,fittable[:fit_lambda];rtol=rtol) --> true
 # @fact issimilarhead(glp.b0,fittable[:fit_alpha];rtol=rtol) --> true
 # @fact issimilarhead(full(glp.coefs'),gcoefs';rtol=10*rtol) --> true
-# @fact issimilarhead(deviance(glp),fittable[:fit_deviance];rtol=10rtol) --> true
+# @fact issimilarhead(deviance(glp),fittable[:fit_deviance]/nobs(glp);rtol=rtol) --> true
+# @fact issimilarhead(deviance(glp,X,y),fittable[:fit_deviance]/nobs(glp);rtol=rtol) --> true
 #
-# lp = fit(LassoPath, X, y, dist, link; λ=λ) #, λminratio=0.001)
+# path = glp
+# newX = X
+# select=:all
+# offset = path.m.rr.offset
+# aicc(path)
+# dev0=deviance(path)
+# μ = predict(path, X; offset=offset, select=select)
+# dev1=deviance(path,y,μ)
+# dev2=deviance(path,X,y; offset=offset, select=select)
+# dev0 ≈ dev1
+# dev1 == dev2
+#
+# lp = fit(LassoPath, X, y, dist, link; λ=λ, λminratio=0.001) #, λminratio=0.001)
 # @fact glp.λ --> lp.λ
 # @fact glp.b0 --> lp.b0
 # @fact glp.coefs --> lp.coefs
-
-
-
-
-
-
-
-
-
-
-
+# deviance(path)
+# μ = predict(path, X; offset=offset, select=select)
+# deviance(path,y,μ)
+# deviance(path,X,y)
 #
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+# #
