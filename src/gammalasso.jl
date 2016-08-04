@@ -32,7 +32,7 @@ function Base.show(io::IO, path::GammaLassoPath)
     ncoefs = zeros(Int, size(coefs, 2))
     p = size(coefs,1)
 
-    prefix = isa(path.m, GeneralizedLinearModel) ? string(typeof(path.m.rr.d).name.name, " ") : ""
+    prefix = isa(path.m, GeneralizedLinearModel) ? string(typeof(distfun(path)).name.name, " ") : ""
     if path.γ!=zeros(p)
         prefix*="Gamma-"
     end

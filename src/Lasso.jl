@@ -17,7 +17,7 @@ using Reexport, StatsBase, .Util
 @reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
 using GLM.FPVector, GLM.wrkwt!
 export RegularizationPath, LassoPath, GammaLassoPath, fit, fit!, coef, predict,
-    minAICc, hasintercept, df, aicc
+    minAICc, hasintercept, df, aicc, distfun, linkfun, deviance, deviance!
 
 
 ## HELPERS FOR SPARSE COEFFICIENTS
@@ -181,7 +181,7 @@ type LassoPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel}),T} <: Regul
 end
 
 function Base.show(io::IO, path::LassoPath)
-    prefix = isa(path.m, GeneralizedLinearModel) ? string(typeof(path.m.rr.d).name.name, " ") : ""
+    prefix = isa(path.m, GeneralizedLinearModel) ? string(typeof(distfun(path)).name.name, " ") : ""
     println(io, prefix*"Lasso Solution Path ($(size(path.coefs, 2)) solutions for $(size(path.coefs, 1)) predictors in $(path.niter) iterations):")
 
     coefs = path.coefs
@@ -337,14 +337,14 @@ end
 StatsBase.nobs(path::RegularizationPath) = length(path.m.rr.y)
 
 # TODO would be better to use GLM.dispersion_parameter, but that breaks backward comp.
-dispersion_parameter(path::RegularizationPath) = typeof(path.m) <: LinearModel || typeof(path.m.rr.d) in (Gamma, Normal, InverseGaussian)
+dispersion_parameter(path::RegularizationPath) = typeof(distfun(path)) in (Gamma, Normal, InverseGaussian)
 
 function StatsBase.loglikelihood(path::RegularizationPath)
+    n = nobs(path)
     if typeof(path.m) <: LinearModel
-        n = nobs(path)
-        -0.5.*n.*log(deviance(path)./n)
+        -0.5*n.*log(deviance(path))
     else
-        -0.5*deviance(path)
+        -0.5*n.*deviance(path)
     end
 end
 
@@ -418,8 +418,18 @@ end
 #     end
 # end
 
-## Prediction function for GLMs
+"Prediction function for GLMs"
 function StatsBase.predict{T<:AbstractFloat}(path::RegularizationPath, newX::AbstractMatrix{T}; offset::FPVector=Array(T,0), select=:all)
+    if select==:all
+        μ = zeros(T,nobs(path),length(path.λ))
+    else
+        μ = zeros(T,nobs(path))
+    end
+    predict!(μ, path, newX; offset=offset, select=select)
+end
+
+## Prediction function for GLMs
+function StatsBase.predict!{T<:AbstractFloat}(μ::AbstractArray{T}, path::RegularizationPath, newX::AbstractMatrix{T}; offset::FPVector=Array(T,0), select=:all)
     # add an interecept to newX if the model has one
     if hasintercept(path)
         newX = [ones(eltype(newX),size(newX,1),1) newX]
@@ -440,10 +450,20 @@ function StatsBase.predict{T<:AbstractFloat}(path::RegularizationPath, newX::Abs
         length(offset) > 0 && throw(ArgumentError("fit without offset, so value of `offset` kw arg does not make sense"))
     end
 
-    # invert all etas to mus
-    μ(η) = linkinv(mm.rr.l, η)
-    mu = map(μ,eta)
+    if typeof(path.m) <: LinearModel
+        copy!(μ,eta)
+    else
+        # invert all etas to mus
+        μfn(η) = linkinv(mm.rr.l, η)
+        map!(μfn,μ,eta)
+    end
 end
+
+"distribution of underlying GLM"
+distfun(path::RegularizationPath) = (typeof(path.m) <: LinearModel) ? Normal() : path.m.rr.d
+
+"link of underlying GLM"
+GLM.linkfun(path::RegularizationPath) = (typeof(path.m) <: LinearModel) ? IdentityLink() : path.m.rr.l
 
 "deviance at each segment of the path for the fitted model and data"
 StatsBase.deviance(path::RegularizationPath) = (1 .- path.pct_dev) .* path.nulldev # * nobs(path)
@@ -452,25 +472,47 @@ StatsBase.deviance(path::RegularizationPath) = (1 .- path.pct_dev) .* path.nulld
 deviance at each segement of the path for (potentially new) data X and y
 select=:all or :AICc like in coef()
 """
-function StatsBase.deviance{T<:AbstractFloat,V<:FPVector}(path::RegularizationPath, X::AbstractMatrix{T}, y::V; offset::FPVector=Array(T,0), select=:all)
+function StatsBase.deviance{T<:AbstractFloat,V<:FPVector}(path::RegularizationPath, X::AbstractMatrix{T}, y::V;
+                    offset::FPVector=Array(T,0), select=:all,
+                    wts::FPVector=ones(T, length(y)))
     μ = predict(path, X; offset=offset, select=select)
-    deviance(path, y, μ)
+    deviance(path, y, μ, wts)
+end
+
+function deviance!{T<:AbstractFloat,V<:FPVector}(devresidv::AbstractArray{T}, path::RegularizationPath, X::AbstractMatrix{T}, y::V;
+                    offset::FPVector=Array(T,0), select=:all,
+                    wts::FPVector=ones(T, length(y)))
+    μ = devresidv # devresidv doubles here as μ
+    predict!(μ ,path, X; offset=offset, select=select)
+    deviance!(devresidv, path, y, μ, wts)
 end
 
 """
 deviance at each segement of the path for (potentially new) y and predicted values μ
 """
-function StatsBase.deviance{T<:AbstractFloat,V<:FPVector}(path::RegularizationPath, y::V, μ::AbstractArray{T})
+StatsBase.deviance{T<:AbstractFloat,V<:FPVector}(path::RegularizationPath, y::V, μ::AbstractArray{T},
+                wts::FPVector=ones(T, length(y))) = deviance!(zeros(μ), path, y, μ, wts)
+
+"""
+store the deviance at each segement of the path for (potentially new) y and predicted values μ
+in devresidv of size nobs x segments
+"""
+function deviance!{T<:AbstractFloat,V<:FPVector}(devresidv::AbstractArray{T}, path::RegularizationPath, y::V, μ::AbstractArray{T},
+                wts::FPVector=ones(T, length(y)))
     # get model specs from path
     r = path.m.rr
-    dist = r.d
-    wts = r.wts
+    d = distfun(path)
+
+    # rescale weights
+    wts .*= convert(T, 1/sum(wts))
 
     # closure for deviance of a single observation
-    dev(ys,μs,ws) = devresid(dist, ys, μs, ws)
+    dev(μs,ys,ws) = devresid(d, ys, μs, ws)
 
-    # deviances of all obs x segment
-    devresidv = broadcast(dev,y,μ,wts)
+    # deviances of all nobs x nsegments
+    println("size(devresidv) = $(size(devresidv))")
+    println("size(μ) = $(size(μ))")
+    broadcast!(dev,devresidv,μ,y,wts)
 
     # deviance is just their sum
     if size(μ,2) > 1
