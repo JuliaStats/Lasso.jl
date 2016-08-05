@@ -77,7 +77,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{GammaLassoPath},
                                                      l::Link=canonicallink(d);
                                                      γ::@compat(Union{Number,Vector{Number}})=0.0,
                                                      wts::@compat(Union{FPVector,Void})=ones(T, length(y)),
-                                                     offset::V=similar(y, 0),
+                                                     offset::AbstractVector=similar(y, 0),
                                                      α::Number=one(eltype(y)), nλ::Int=100,
                                                      λminratio::Number=ifelse(size(X, 1) < size(X, 2), 0.01, 1e-4),
                                                      λ::@compat(Union{Vector,Void})=nothing, standardize::Bool=true,
