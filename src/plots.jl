@@ -1,5 +1,6 @@
 using Gadfly, DataFrames, Compat
-function Gadfly.plot(path::RegularizationPath, gadfly_args...; x=:segment, varnames=nothing, selectedvars=:nonzeroatAICc, showminAICc=true)
+function Gadfly.plot(path::RegularizationPath, gadfly_args...;
+    x=:segment, varnames=nothing, selectedvars=[], select=:AICc, showselectors=[:AICc,:CVmin,:CV1se], nCVfolds=10)
     β=coef(path)
     if hasintercept(path)
         β = β[2:end,:]
@@ -22,22 +23,51 @@ function Gadfly.plot(path::RegularizationPath, gadfly_args...; x=:segment, varna
     end
     outdata = deepcopy(indata)
 
-    minAICcix=minAICc(path)
-    if selectedvars==:nonzeroatAICc || selectedvars==:all
-        for j=1:p
-            if selectedvars==:all || β[j,minAICcix]!=0
-                indata[varnames[j]]=vec(full(β[j,:]))
-            else
-                outdata[varnames[j]]=vec(full(β[j,:]))
-            end
+    # CVfun = eval(select)
+    # CVfun(oosdevs)
+
+    # automatic selectors
+    xintercept = Float64[]
+
+    if select == :AICc || :AICc in showselectors
+        minAICcix=minAICc(path)
+        push!(xintercept,indata[minAICcix,x])
+    end
+
+    if select == :CVmin || :CVmin in showselectors
+        gen = Kfold(length(path.m.rr.y),nCVfolds)
+        segCVmin = cross_validate_path(path;gen=gen,select=:CVmin)
+        push!(xintercept,indata[segCVmin,x])
+    end
+
+    if select == :CV1se || :CV1se in showselectors
+        gen = Kfold(length(path.m.rr.y),nCVfolds)
+        segCV1se = cross_validate_path(path;gen=gen,select=:CV1se)
+        push!(xintercept,indata[segCV1se,x])
+    end
+
+    if length(selectedvars) == 0
+        if select == :all
+            selectedvars = 1:p
+        elseif select == :AICc
+            selectedvars = β[:,minAICcix].!=0
+        elseif select == :CVmin
+            selectedvars = β[:,segCVmin].!=0
+        elseif select == :CV1se
+            selectedvars = β[:,segCV1se].!=0
+        else
+            error("unknown selector $select")
         end
-    elseif typeof(selectedvars)==Vector{Int}
-        for j in selectedvars
-            indata[varnames[j]]=vec(full(β[j,:]))
-        end
-        for j in setdiff(1:p,selectedvars)
-            outdata[varnames[j]]=vec(full(β[j,:]))
-        end
+    end
+
+    # colored paths
+    for j in selectedvars
+        indata[varnames[j]]=vec(full(β[j,:]))
+    end
+
+    # grayed out paths
+    for j in setdiff(1:p,selectedvars)
+        outdata[varnames[j]]=vec(full(β[j,:]))
     end
 
     inmdframe=melt(indata,x)
@@ -46,11 +76,6 @@ function Gadfly.plot(path::RegularizationPath, gadfly_args...; x=:segment, varna
     rename!(outmdframe,:value,:coefficients)
     inmdframe = inmdframe[convert(BitArray,map(b->!isnan(b),inmdframe[:coefficients])),:]
     outmdframe = outmdframe[convert(BitArray,map(b->!isnan(b),outmdframe[:coefficients])),:]
-
-    xintercept = Float64[]
-    if showminAICc
-        push!(xintercept,indata[minAICcix,x])
-    end
 
     layers=@compat Vector{Layer}()
     if size(inmdframe,1) > 0

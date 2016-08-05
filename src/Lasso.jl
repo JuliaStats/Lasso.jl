@@ -17,7 +17,7 @@ using Reexport, StatsBase, .Util
 @reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
 using GLM.FPVector, GLM.wrkwt!
 export RegularizationPath, LassoPath, GammaLassoPath, fit, fit!, coef, predict,
-    minAICc, hasintercept, df, aicc, distfun, linkfun
+    minAICc, hasintercept, df, aicc, distfun, linkfun, cross_validate_path
 
 
 ## HELPERS FOR SPARSE COEFFICIENTS
@@ -385,7 +385,7 @@ minAICc(path::RegularizationPath;k=2)=indmin(aicc(path;k=k))
 hasintercept(path::RegularizationPath) = hasintercept(path.m.pp)
 
 #Consistent with StatsBase.coef, if the model has an intercept it is included.
-function StatsBase.coef(path::RegularizationPath; select=:all)
+function StatsBase.coef(path::RegularizationPath; select=:all, nCVfolds=10)
     if length(path.λ) == 0
         X = path.m.pp.X
         p = size(X,2)
@@ -407,6 +407,16 @@ function StatsBase.coef(path::RegularizationPath; select=:all)
         else
             path.coefs[:,minAICc(path)]
         end
+    elseif select == :CVmin || select == :CV1se
+        gen = Kfold(length(path.m.rr.y),nCVfolds)
+        segCV = cross_validate_path(path;gen=gen,select=select)
+        if hasintercept(path)
+            vec(vcat(path.b0[segCV],path.coefs[:,segCV]))
+        else
+            path.coefs[:,segCV]
+        end
+    else
+        error("unknown selector $select")
     end
 end
 
@@ -475,7 +485,6 @@ deviance at each segement of the path for (potentially new) y and predicted valu
 function StatsBase.deviance{T<:AbstractFloat,V<:FPVector}(path::RegularizationPath, y::V, μ::AbstractArray{T},
                 wts::FPVector=ones(T, length(y)))
     # get model specs from path
-    r = path.m.rr
     d = distfun(path)
 
     # rescale weights
@@ -498,5 +507,6 @@ end
 include("coordinate_descent.jl")
 include("gammalasso.jl")
 include("plots.jl")
+include("cross_validation.jl")
 
 end
