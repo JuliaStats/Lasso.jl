@@ -9,7 +9,7 @@ function Gadfly.plot(path::RegularizationPath, gadfly_args...;
     (p,nλ)=size(β)
 
     if varnames==nothing
-        varnames=[symbol("var$i") for i=1:p]
+        varnames=[symbol("x$i") for i=1:p]
     end
 
     indata=DataFrame()
@@ -27,34 +27,48 @@ function Gadfly.plot(path::RegularizationPath, gadfly_args...;
     # CVfun(oosdevs)
 
     # automatic selectors
-    xintercept = Float64[]
+    # xintercept = Float64[]
+    dashed_vlines=Float64[]
+    solid_vlines=Float64[]
 
     if select == :AICc || :AICc in showselectors
         minAICcix=minAICc(path)
-        push!(xintercept,indata[minAICcix,x])
+        if select == :AICc
+            push!(solid_vlines,indata[minAICcix,x])
+        else
+            push!(dashed_vlines,indata[minAICcix,x])
+        end
     end
 
     if select == :CVmin || :CVmin in showselectors
         gen = Kfold(length(path.m.rr.y),nCVfolds)
         segCVmin = cross_validate_path(path;gen=gen,select=:CVmin)
-        push!(xintercept,indata[segCVmin,x])
+        if select == :CVmin
+            push!(solid_vlines,indata[segCVmin,x])
+        else
+            push!(dashed_vlines,indata[segCVmin,x])
+        end
     end
 
     if select == :CV1se || :CV1se in showselectors
         gen = Kfold(length(path.m.rr.y),nCVfolds)
         segCV1se = cross_validate_path(path;gen=gen,select=:CV1se)
-        push!(xintercept,indata[segCV1se,x])
+        if select == :CV1se
+            push!(solid_vlines,indata[segCV1se,x])
+        else
+            push!(dashed_vlines,indata[segCV1se,x])
+        end
     end
 
     if length(selectedvars) == 0
         if select == :all
             selectedvars = 1:p
         elseif select == :AICc
-            selectedvars = β[:,minAICcix].!=0
+            selectedvars = find(β[:,minAICcix].!=0)
         elseif select == :CVmin
-            selectedvars = β[:,segCVmin].!=0
+            selectedvars = find(β[:,segCVmin].!=0)
         elseif select == :CV1se
-            selectedvars = β[:,segCV1se].!=0
+            selectedvars = find(β[:,segCV1se].!=0)
         else
             error("unknown selector $select")
         end
@@ -78,8 +92,14 @@ function Gadfly.plot(path::RegularizationPath, gadfly_args...;
     outmdframe = outmdframe[convert(BitArray,map(b->!isnan(b),outmdframe[:coefficients])),:]
 
     layers=@compat Vector{Layer}()
+    if length(dashed_vlines) > 0
+        append!(layers,layer(xintercept=dashed_vlines, Geom.vline, Theme(default_color=colorant"black",line_style=Gadfly.get_stroke_vector(:dot))))
+    end
+    if length(solid_vlines) > 0
+        append!(layers,layer(xintercept=solid_vlines, Geom.vline, Theme(default_color=colorant"black")))
+    end
     if size(inmdframe,1) > 0
-      append!(layers, layer(inmdframe,x=x,y="coefficients",color="variable",Geom.line,xintercept=xintercept,Geom.vline(color=colorant"black")))
+      append!(layers, layer(inmdframe,x=x,y="coefficients",color="variable",Geom.line))
     end
     if size(outmdframe,1) > 0
       append!(layers,layer(outmdframe,x=x,y="coefficients",group="variable",Geom.line,Theme(default_color=colorant"lightgray")))

@@ -84,3 +84,9 @@ CVfun = eval(select)
 # @profile cross_validate_path(path,X,y,gen;offset=offset)
 # ProfileView.view()
 # # Profile.print()
+
+dashed_vlines=[0.2,0.3]
+dashed_layer = layer(xintercept=dashed_vlines, Geom.vline, Theme(default_color=colorant"black",line_style=Gadfly.get_stroke_vector(:dot)))
+solid_vlines=[1.2,1.3]
+solid_layer = layer(xintercept=solid_vlines, Geom.vline, Theme(default_color=colorant"black"))
+plot(dashed_layer,solid_layer)

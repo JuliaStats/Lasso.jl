@@ -170,7 +170,7 @@ function cross_validate_path{T<:AbstractFloat,V<:FPVector}(path::RegularizationP
         # deviance of segment s (cummulator for sum of obs deviances)
         devs = zero(T)
 
-        @inbounds @simd for ip=1:nis
+        for ip=1:nis
           # get test obs
           yi = y[test_inds[ip]]
 

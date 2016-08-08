@@ -770,8 +770,8 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbo
             b0s[i] = b0
 
             # Test whether we should continue
-            if i == nλ || (autoλ && last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
-                           pct_dev[i] > MAX_DEV_FRAC)
+            if i == nλ || (autoλ && (last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
+                           pct_dev[i] > MAX_DEV_FRAC))
                 break
             end
 
@@ -835,8 +835,8 @@ function StatsBase.fit!{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=fa
         b0s[i] = intercept(newcoef, cd)
 
         # Test whether we should continue
-        if i == nλ || (autoλ && last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
-                       pct_dev[i] > MAX_DEV_FRAC)
+        if i == nλ || (autoλ && (last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
+                       pct_dev[i] > MAX_DEV_FRAC))
             break
         end
 

@@ -31,6 +31,9 @@ randfuns <- list(rnorm,rbinom1,rpois)
 gammas <- c(0, 2, 10)
 
 for(f in 1:3) {
+  # f <- 3
+  # gamma <- 2
+  
   family <- families[[f]]
   print(family)
   randfun <- randfuns[[f]]
@@ -48,6 +51,7 @@ for(f in 1:3) {
   
   # export estimates
   for(gamma in gammas) {
+    # AICc selection
     fit <- gamlr(x, yp, gamma=gamma, lambda.min.ratio=1e-3, family=family$family, standardize = TRUE)
     fitname <- paste0("gamma",gamma)
     fitfilename <- paste0(familyfilename,".",fitname)
@@ -60,7 +64,18 @@ for(f in 1:3) {
     coefs <- as.matrix(fit$beta)
     write.table(coefs,file = paste0(fitfilename,".coefs.csv") ,sep=",",row.names=FALSE,col.names=FALSE)
     
-    params <- data.frame(fit$gamma,fit$family)
+    # now 10-fold cv
+    cvfit <- cv.gamlr(x, yp, gamma=gamma, lambda.min.ratio=1e-3, family=family$family, standardize = TRUE, nfold=10)
+
+    coefs_cvmin <- as.matrix(coef(cvfit,select="min"))
+    write.table(coefs_cvmin,file = paste0(fitfilename,".coefs.CVmin.csv") ,sep=",",row.names=FALSE,col.names=FALSE)
+    
+    coefs_cv1se <- as.matrix(coef(cvfit,select="1se"))
+    write.table(coefs_cv1se,file = paste0(fitfilename,".coefs.CV1se.csv") ,sep=",",row.names=FALSE,col.names=FALSE)
+
+    # both fit's params
+    params <- data.frame(fit$gamma,fit$family,cvfit$seg.min,cvfit$seg.1se,cvfit$lambda.min,cvfit$lambda.1se)
     write.table(params,file = paste0(fitfilename,".params.csv") ,sep=",",row.names=FALSE)
-  }
+
+    }
 }
