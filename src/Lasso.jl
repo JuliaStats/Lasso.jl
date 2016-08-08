@@ -13,7 +13,7 @@ import Base.LinAlg.BlasReal
 include("FusedLasso.jl")
 include("TrendFiltering.jl")
 
-using Reexport, StatsBase, .Util
+using Reexport, StatsBase, .Util, MLBase
 @reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
 using GLM.FPVector, GLM.wrkwt!
 export RegularizationPath, LassoPath, GammaLassoPath, fit, fit!, coef, predict,
