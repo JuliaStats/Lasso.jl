@@ -161,7 +161,7 @@ function addcoef(x::RandomCoefficientIterator, icoef::Int)
 end
 addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
 
-abstract RegularizationPath{S<:Union{LinearModel,GeneralizedLinearModel}} <: RegressionModel
+abstract RegularizationPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel})} <: RegressionModel
 ## LASSO PATH
 
 type LassoPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel}),T} <: RegularizationPath{S}
