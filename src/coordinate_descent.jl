@@ -677,7 +677,6 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbo
 
     if autoλ
         # No need to fit the first model
-        # coefs[:, 1] = zero(T) # redundant
         b0s[1] = path.nullb0
         i = 2
     else
@@ -722,12 +721,11 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbo
                     b0diff = b0 - oldb0
                     coefdiff = SparseCoefficients{T}(size(X, 2))
                     copy!(coefdiff,newcoef)
-                    for icoef = 1:nnz(newcoef)
-                        oldcoefval = icoef > nnz(oldcoef) ? zero(T) : oldcoef.coef[icoef]
-                        coefdiff.coef[icoef] = newcoef.coef[icoef] - oldcoefval
+                    for icoef = 1:nnz(oldcoef)
+                        coefdiff.coef[icoef] -= oldcoef.coef[icoef]
                     end
                     while obj > objold
-                        verbose && println("f=$f: $obj > $objold, dev=$dev, b0=$b0, newcoef=$newcoef")
+                        # verbose && println("f=$f: $obj > $objold, dev=$dev, b0=$b0, newcoef=$newcoef")
                         f /= 2.; f > minStepFac || error("step-halving failed at beta = $(newcoef)")
                         for icoef = 1:nnz(newcoef)
                             oldcoefval = icoef > nnz(oldcoef) ? zero(T) : oldcoef.coef[icoef]

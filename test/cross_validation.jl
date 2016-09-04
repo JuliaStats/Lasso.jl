@@ -54,39 +54,3 @@ srand(13); gen = Kfold(length(y[ix]),10)
 
 λCVmin = path.λ[segCVmin]
 λCV1se = path.λ[segCV1se]
-# @time oosdevs2 = cross_validate_path_slow_but_sure(path,X[ix,:],y[ix],gen;offset=offset[ix])
-oosdevs ≈ oosdevs2
-oosdevs ./ oosdevs2
-
-nλ = length(path.λ)
-
-@time λCVmin = path.λ[CVmin(oosdevs)]
-@time λCV1se = path.λ[CV1se(oosdevs)]
-
-select=:CVmin
-CVfun = eval(select)
-@time CVfun(oosdevs)
-
-select=:CV1se
-CVfun = eval(select)
-@time CVfun(oosdevs)
-
-# seg.min <- which.min(cvm)
-# lambda.min = lambda[seg.min]
-#
-# cv1se <- (cvm[seg.min]+cvs[seg.min])-cvm
-# seg.1se <- min((1:length(cvm))[cv1se>=0])
-# lambda.1se = lambda[seg.1se]
-
-# using ProfileView
-# Profile.init(delay=0.0001)
-# Profile.clear()
-# @profile cross_validate_path(path,X,y,gen;offset=offset)
-# ProfileView.view()
-# # Profile.print()
-
-dashed_vlines=[0.2,0.3]
-dashed_layer = layer(xintercept=dashed_vlines, Geom.vline, Theme(default_color=colorant"black",line_style=Gadfly.get_stroke_vector(:dot)))
-solid_vlines=[1.2,1.3]
-solid_layer = layer(xintercept=solid_vlines, Geom.vline, Theme(default_color=colorant"black"))
-plot(dashed_layer,solid_layer)

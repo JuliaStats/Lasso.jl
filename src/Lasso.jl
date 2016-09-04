@@ -161,10 +161,10 @@ function addcoef(x::RandomCoefficientIterator, icoef::Int)
 end
 addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
 
-abstract RegularizationPath <: RegressionModel
+abstract RegularizationPath{S<:Union{LinearModel,GeneralizedLinearModel}} <: RegressionModel
 ## LASSO PATH
 
-type LassoPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel}),T} <: RegularizationPath
+type LassoPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel}),T} <: RegularizationPath{S}
     m::S
     nulldev::T                    # null deviance
     nullb0::T                     # intercept of null model, if one was fit
@@ -202,12 +202,12 @@ const MAX_DEV_FRAC = 0.999
 # Compute automatic λ values based on X'y and λminratio
 function computeλ(Xy, λminratio, α, nλ, ω::@compat(Union{Vector,Void}))
     λmax = abs(Xy[1])
-    if ω != nothing
+    if !isa(ω, Void)
         λmax /= ω[1]
     end
     for i = 2:length(Xy)
         x = abs(Xy[i])
-        if ω != nothing
+        if !isa(ω, Void)
             x /= ω[i]
         end
         if x > λmax
@@ -258,7 +258,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
 
     # penalty_factor (ω) defaults to a vector of ones
     ω = penalty_factor
-    if ω != nothing
+    if !isa(ω, Void)
         # following glmnet rescale penalty factors to sum to the number of coefficients
         ω = rescale(ω,size(X, 2))
     end
@@ -336,8 +336,8 @@ end
 
 StatsBase.nobs(path::RegularizationPath) = length(path.m.rr.y)
 
-# TODO would be better to use GLM.dispersion_parameter, but that breaks backward comp.
-dispersion_parameter(path::RegularizationPath) = typeof(distfun(path)) in (Gamma, Normal, InverseGaussian)
+
+dispersion_parameter(path::RegularizationPath) = GLM.dispersion_parameter(distfun(path))
 
 function StatsBase.loglikelihood(path::RegularizationPath)
     n = nobs(path)
@@ -352,9 +352,12 @@ if Pkg.installed("StatsBase") >= v"0.8.0"
     import StatsBase.df, StatsBase.aicc
 end
 
-""" Approximates the degrees-of-freedom in each segment of the path as the number of non zero coefficients
-    plus a dispersion parameter when appropriate.
-    Note that for GammaLassoPath this may be a crude approximation, as gamlr does this differently.
+"""
+    df(path::RegularizationPath)
+
+Approximates the degrees-of-freedom in each segment of the path as the number of non zero coefficients
+plus a dispersion parameter when appropriate.
+Note that for GammaLassoPath this may be a crude approximation, as gamlr does this differently.
 """
 function df(path::RegularizationPath)
     nλ = length(path.λ)
@@ -420,14 +423,6 @@ function StatsBase.coef(path::RegularizationPath; select=:all, nCVfolds=10)
     end
 end
 
-# function intercept(path::RegularizationPath; select=:all)
-#     if select == :all
-#         path.b0
-#     elseif select == :AICc
-#         path.b0[minAICc(path)]
-#     end
-# end
-
 ## Prediction function for GLMs
 function StatsBase.predict{T<:AbstractFloat}(path::RegularizationPath, newX::AbstractMatrix{T}; offset::FPVector=Array(T,0), select=:all)
     # add an interecept to newX if the model has one
@@ -450,7 +445,7 @@ function StatsBase.predict{T<:AbstractFloat}(path::RegularizationPath, newX::Abs
         length(offset) > 0 && throw(ArgumentError("fit without offset, so value of `offset` kw arg does not make sense"))
     end
 
-    if typeof(path.m) <: LinearModel
+    if typeof(mm) <: LinearModel
         eta
     else
         # invert all etas to mus
@@ -460,7 +455,8 @@ function StatsBase.predict{T<:AbstractFloat}(path::RegularizationPath, newX::Abs
 end
 
 "distribution of underlying GLM"
-distfun(path::RegularizationPath) = (typeof(path.m) <: LinearModel) ? Normal() : path.m.rr.d
+distfun{M<:LinearModel}(path::RegularizationPath{M}) = Normal()
+distfun(path::RegularizationPath) = path.m.rr.d
 
 "link of underlying GLM"
 GLM.linkfun(path::RegularizationPath) = (typeof(path.m) <: LinearModel) ? IdentityLink() : path.m.rr.l
@@ -506,7 +502,6 @@ end
 
 include("coordinate_descent.jl")
 include("gammalasso.jl")
-include("plots.jl")
 include("cross_validation.jl")
 
 end

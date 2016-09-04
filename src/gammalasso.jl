@@ -10,7 +10,7 @@
 
 ## GAMMA LASSO PATH
 
-type GammaLassoPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel}),T} <: RegularizationPath
+type GammaLassoPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel}),T} <: RegularizationPath{S}
     m::S
     nulldev::T                    # null deviance
     nullb0::T                     # intercept of null model, if one was fit
@@ -105,10 +105,10 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{GammaLassoPath},
     # gamma lasso adaptation
     # can potentially pass a different γ for each element of X, but if scalar we copy it to all params
     p = size(X, 2)
-    if length(γ) == 1
-      γ=convert(Vector{T},repmat([γ],p))
+    if isa(γ,Number)
+      γ = fill(T(γ), p)
     else
-      @assert length(γ)==p "length(γ) != number of parameters ($p)"
+      length(γ)==p || throw(DimensionMismatch("length(γ) != number of parameters ($p)"))
     end
 
     # initialize penalty factors to 1 (no rescaling to sum to the number of coefficients)

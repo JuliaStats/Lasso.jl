@@ -1,7 +1,7 @@
 # Comparing with Matt Taddy's gamlr.R
 # To rebuild the test cases source(gammalasso.R)
 # using Lasso
-using GLM, FactCheck, DataFrames, Gadfly
+using GLM, FactCheck, DataFrames
 
 # often path length is different because of different stopping rules...
 function issimilarhead(a::AbstractVector,b::AbstractVector;rtol=1e-4)
@@ -15,8 +15,6 @@ function issimilarhead(a::AbstractMatrix,b::AbstractMatrix;rtol=1e-4)
 end
 
 datapath = joinpath(dirname(@__FILE__), "data")
-plotspath = joinpath(dirname(@__FILE__), "plots")
-mkpath(plotspath)
 
 rtol=1e-2
 srand(243214)
@@ -24,8 +22,8 @@ facts("GammaLassoPath") do
     for (family, dist, link) in (("gaussian", Normal(), IdentityLink()), ("binomial", Binomial(), LogitLink()), ("poisson", Poisson(), LogLink()))
         context(family) do
             data = readcsv(joinpath(datapath,"gamlr.$family.data.csv"))
-            y = data[:,1]
-            X = data[:,2:end]
+            y = convert(Vector{Float64},data[:,1])
+            X = convert(Matrix{Float64},data[:,2:end])
             (n,p) = size(X)
             for γ in [0 2 10]
                 fitname = "gamma$γ"
@@ -78,20 +76,11 @@ facts("GammaLassoPath") do
                         @fact glp.b0 --> lp.b0
                         @fact glp.coefs --> lp.coefs
                     end
-
-                    # test plots
-                    p = plot(glp;x=:logλ)
-                    filename = joinpath(plotspath,"$family.$fitname.path.svg")
-                    draw(SVG(filename,5inch,5inch),p)
-                    @fact isfile(filename) --> true
                 end
             end
         end
     end
 end
-
-# comment the next line to see plots after test finishes in Lasso/test/plots/
-rm(plotspath;recursive=true)
 
 ## the following code is useful for understanding comparison failures
 
