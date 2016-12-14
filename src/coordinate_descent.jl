@@ -663,7 +663,7 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbo
     end
 
     @extractfields cd X α ω
-    @extractfields r offset eta wrkresid
+    @extractfields r offset eta wrkresid wrkwt
     coefs = spzeros(T, size(X, 2), nλ)
     b0s = zeros(T, nλ)
     oldcoef = SparseCoefficients{T}(size(X, 2))
@@ -701,14 +701,13 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbo
 
                 # Compute working response
                 wrkresp!(scratchmu, eta, wrkresid, offset)
-                wrkwt = wrkwt!(r)
 
                 # Run coordinate descent inner loop
                 niter += cdfit!(newcoef, update!(cd, newcoef, scratchmu, wrkwt), curλ, criterion)
                 b0 = intercept(newcoef, cd)
 
                 # Update GLM and get deviance
-                updatemu!(r, linpred!(scratchmu, cd, newcoef, b0))
+                updateμ!(r, linpred!(scratchmu, cd, newcoef, b0))
 
                 # Compute Elastic Net objective
                 objold = obj

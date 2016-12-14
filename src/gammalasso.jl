@@ -97,7 +97,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{GammaLassoPath},
         for i = 1:length(Xnorm)
             @inbounds Xnorm[i] = 1/Xnorm[i]
         end
-        X = scale(X, Xnorm)
+        X = X .* Xnorm.'
     else
         Xnorm = T[]
     end
@@ -163,7 +163,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{GammaLassoPath},
 
         if autoλ
             # Find max λ
-            Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwts)
+            Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwt)
             λ = computeλ(Xy, λminratio, α, nλ, ω)
             nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
         else
@@ -172,7 +172,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{GammaLassoPath},
         end
 
         eta = GLM.initialeta!(d, l, similar(y), y, wts, off)
-        rr = GlmResp{typeof(y),typeof(d),typeof(l)}(y, d, l, eta, similar(eta), offset, wts)
+        rr = GlmResp(y, d, l, eta, similar(eta), offset, wts)
         model = GeneralizedLinearModel(rr, cd, false)
     end
 
@@ -212,7 +212,7 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::GammaLassoPath{S,T}; 
     end
 
     @extractfields cd X α ω
-    @extractfields r offset eta wrkresid
+    @extractfields r offset eta wrkresid wrkwt
     coefs = spzeros(T, size(X, 2), nλ)
     b0s = zeros(T, nλ)
     oldcoef = SparseCoefficients{T}(size(X, 2))
@@ -250,14 +250,13 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::GammaLassoPath{S,T}; 
 
                 # Compute working response
                 wrkresp!(scratchmu, eta, wrkresid, offset)
-                wrkwt = wrkwt!(r)
 
                 # Run coordinate descent inner loop
                 niter += cdfit!(newcoef, update!(cd, newcoef, scratchmu, wrkwt), curλ, criterion)
                 b0 = intercept(newcoef, cd)
 
                 # Update GLM and get deviance
-                updatemu!(r, linpred!(scratchmu, cd, newcoef, b0))
+                updateμ!(r, linpred!(scratchmu, cd, newcoef, b0))
 
                 # Compute Elastic Net objective
                 objold = obj

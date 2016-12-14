@@ -15,7 +15,7 @@ include("TrendFiltering.jl")
 
 using Reexport, StatsBase, .Util, MLBase
 @reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
-using GLM.FPVector, GLM.wrkwt!
+using GLM.FPVector
 export RegularizationPath, LassoPath, GammaLassoPath, fit, fit!, coef, predict,
     minAICc, hasintercept, df, aicc, distfun, linkfun, cross_validate_path
 
@@ -246,7 +246,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
         for i = 1:length(Xnorm)
             @inbounds Xnorm[i] = 1/Xnorm[i]
         end
-        X = scale(X, Xnorm)
+        X = X .* Xnorm.'
     else
         Xnorm = T[]
     end
@@ -307,7 +307,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
 
         if autoλ
             # Find max λ
-            Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwts)
+            Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwt)
             λ = computeλ(Xy, λminratio, α, nλ, ω)
             nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
         else
@@ -316,7 +316,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
         end
 
         eta = GLM.initialeta!(d, l, similar(y), y, wts, off)
-        rr = GlmResp{typeof(y),typeof(d),typeof(l)}(y, d, l, eta, similar(eta), offset, wts)
+        rr = GlmResp(y, d, l, eta, similar(eta), offset, wts)
         model = GeneralizedLinearModel(rr, cd, false)
     end
 
@@ -423,6 +423,10 @@ function StatsBase.coef(path::RegularizationPath; select=:all, nCVfolds=10)
     end
 end
 
+"link of underlying GLM"
+GLM.linkfun{M<:LinearModel}(path::RegularizationPath{M}) = IdentityLink()
+GLM.linkfun{V<:FPVector,D<:UnivariateDistribution,L<:Link,L2<:GLM.LinPred}(path::RegularizationPath{GeneralizedLinearModel{GlmResp{V,D,L},L2}}) = L()
+
 ## Prediction function for GLMs
 function StatsBase.predict{T<:AbstractFloat}(path::RegularizationPath, newX::AbstractMatrix{T}; offset::FPVector=Array(T,0), select=:all)
     # add an interecept to newX if the model has one
@@ -449,17 +453,14 @@ function StatsBase.predict{T<:AbstractFloat}(path::RegularizationPath, newX::Abs
         eta
     else
         # invert all etas to mus
-        μ(η) = linkinv(mm.rr.l, η)
-        map(μ,eta)
+        μ(η) = linkinv(linkfun(path), η)
+        map(μ, eta)
     end
 end
 
 "distribution of underlying GLM"
 distfun{M<:LinearModel}(path::RegularizationPath{M}) = Normal()
 distfun(path::RegularizationPath) = path.m.rr.d
-
-"link of underlying GLM"
-GLM.linkfun(path::RegularizationPath) = (typeof(path.m) <: LinearModel) ? IdentityLink() : path.m.rr.l
 
 "deviance at each segment of the path for the fitted model and data"
 StatsBase.deviance(path::RegularizationPath) = (1 .- path.pct_dev) .* path.nulldev # * nobs(path)
@@ -487,7 +488,7 @@ function StatsBase.deviance{T<:AbstractFloat,V<:FPVector}(path::RegularizationPa
     wts .*= convert(T, 1/sum(wts))
 
     # closure for deviance of a single observation
-    dev(ys,μs,ws) = devresid(d, ys, μs, ws)
+    dev(ys,μs,ws) = ws * devresid(d, ys, μs)
 
     # deviances of all obs x segment
     devresidv = broadcast(dev,y,μ,wts)

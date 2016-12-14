@@ -1,7 +1,7 @@
 julia 0.3.7
 StatsBase 0.6.12
 Distributions
-GLM 0.4.8
+GLM 0.6.1
 Reexport
 Compat
 MLBase

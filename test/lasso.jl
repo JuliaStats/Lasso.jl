@@ -80,7 +80,7 @@ facts("LassoPath") do
                                                     end
                                                     gbeta = convert(Matrix{Float64}, g.betas)
 
-                                                    for randomize = VERSION >= v"0.4-dev+1915" ? [false, true] : [false]
+                                                    for randomize = (VERSION >= v"0.4-dev+1915" ? [false, true] : [false])
                                                         context(randomize ? "random" : "sequential") do
                                                             niter = 0
                                                             for naivealgorithm in (false, true)

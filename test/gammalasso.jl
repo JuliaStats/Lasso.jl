@@ -1,6 +1,6 @@
 # Comparing with Matt Taddy's gamlr.R
 # To rebuild the test cases source(gammalasso.R)
-# using Lasso
+using Lasso
 using GLM, FactCheck, DataFrames
 
 # often path length is different because of different stopping rules...

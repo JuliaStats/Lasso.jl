@@ -138,14 +138,14 @@ end
 # Soft threshold
 S(z, γ) = abs(z) <= γ ? zero(z) : ifelse(z > 0, z - γ, z + γ)
 
-type TrendFilter{T,S}
+type TrendFilter{T,S,VT}
     Dkp1::DifferenceMatrix{T}                # D(k+1)
     Dk::DifferenceMatrix{T}                  # D(k)
     DktDk::SparseMatrixCSC{T,Int}            # Dk'Dk
     β::Vector{T}                             # Output coefficients and temporary storage for ρD(k+1)'α + u
     u::Vector{T}                             # ADMM u
     Dkβ::Vector{T}                           # Temporary storage for D(k)*β
-    Dkp1β::Vector{T}                         # Temporary storage for D(k+1)*β (aliases Dkβ)
+    Dkp1β::VT                                # Temporary storage for D(k+1)*β (aliases Dkβ)
     flsa::FusedLasso{T,S}                    # Fused lasso model
     niter::Int                               # Number of ADMM iterations
 end
@@ -157,7 +157,7 @@ function StatsBase.fit{T}(::Type{TrendFilter}, y::AbstractVector{T}, order, λ; 
     β = zeros(T, length(y))
     u = zeros(T, size(Dk, 1))
     Dkβ = zeros(T, size(Dk, 1))
-    Dkp1β = pointer_to_array(pointer(Dkβ), size(Dkp1, 1))
+    Dkp1β = view(Dkβ, 1:size(Dkp1, 1))
     tf = TrendFilter(Dkp1, Dk, Dk'Dk, β, u, Dkβ, Dkp1β, fit(FusedLasso, Dkβ, λ; dofit=false), -1)
     dofit && fit!(tf, y, λ; args...)
     return tf

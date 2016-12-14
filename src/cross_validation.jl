@@ -101,7 +101,7 @@ function cross_validate_path{T<:AbstractFloat,V<:FPVector}(path::RegularizationP
                 yi = y[test_inds[ip]]
 
                 # deviance of a single observation i in segment s
-                devs += devresid(d, yi, μ[ip,s], one(T))
+                devs += devresid(d, yi, μ[ip,s])
             end
 
             # store result
