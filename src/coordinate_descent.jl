@@ -2,10 +2,18 @@
 S(z, γ) = abs(z) <= γ ? zero(z) : ifelse(z > 0, z - γ, z + γ)
 
 # Elastic net penalty with parameter α and given coefficients
-function P{T}(α::T, β::SparseCoefficients{T})
+function P{T}(α::T, β::SparseCoefficients{T}, ω::@compat(Void))
     x = zero(T)
     @inbounds @simd for i = 1:nnz(β)
         x += (1 - α)/2*abs2(β.coef[i]) + α*abs(β.coef[i])
+    end
+    x
+end
+
+function P{T}(α::T, β::SparseCoefficients{T}, ω::Vector{T})
+    x = zero(T)
+    @inbounds @simd for i = 1:nnz(β)
+        x += ω[β.coef2predictor[i]] * ((1 - α)/2*abs2(β.coef[i]) + α*abs(β.coef[i]))
     end
     x
 end
@@ -27,11 +35,12 @@ type NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator
     maxiter::Int                  # maximum number of iterations
     maxncoef::Int                 # maximum number of coefficients
     tol::T                        # tolerance
+    ω::@compat(Union{Vector{T},Void})   # coefficient-specific penalty weights
 
-    NaiveCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefitr::S) =
+    NaiveCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefitr::S, ω::@compat(Union{Vector{T},Void})) =
         new(X, zero(T), zeros(T, size(X, 2)), zeros(T, maxncoef), Array(T, size(X, 1)), zero(T),
             Array(T, size(X, 1)), Array(T, size(X, 1)), convert(T, NaN), coefitr, convert(T, NaN),
-            α, typemax(Int), maxncoef, tol)
+            α, typemax(Int), maxncoef, tol, ω)
 end
 
 # Compute μX for all predictors
@@ -210,15 +219,19 @@ end
     end
 end
 
+λω(λ,ω::@compat(Void),ipred::Int) = λ
+λω(λ,ω::Vector,ipred::Int) = λ*ω[ipred]
+
 # Performs the cycle of all predictors
 function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, λ::T, all::Bool)
-    @extractfields cd residuals X weights Xssq α
+    @extractfields cd residuals X weights Xssq α ω
 
     maxdelta = zero(T)
     @inbounds if all
         # Use all predictors for first and last iterations
         for ipred = 1:size(X, 2)
             v = compute_grad(cd, X, residuals, weights, ipred)
+            λωj = λω(λ,ω,ipred)
 
             icoef = coef.predictor2coef[ipred]
             if icoef != 0
@@ -226,15 +239,15 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
                 v += Xssq[icoef]*oldcoef
             else
                 # Adding a new variable to the model
-                abs(v) < λ*α && continue
+                abs(v) < λωj*α && continue
                 oldcoef = zero(T)
                 nnz(coef) > cd.maxncoef &&
-                    error("maximum number of coefficients $(cd.maxncoef) exceeded at λ = $λ")
+                    error("maximum number of coefficients $(cd.maxncoef) exceeded at λ = $λ (λωj=$λωj)")
                 icoef = addcoef!(coef, ipred)
                 cd.coefitr = addcoef(cd.coefitr, icoef)
                 Xssq[icoef] = computeXssq(cd, ipred)
             end
-            newcoef = S(v, λ*α)/(Xssq[icoef] + λ*(1 - α))
+            newcoef = S(v, λωj*α)/(Xssq[icoef] + λωj*(1 - α))
 
             maxdelta = max(maxdelta, update_coef!(cd, coef, newcoef, icoef, ipred))
         end
@@ -246,7 +259,8 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T}, �
             ipred = coef.coef2predictor[icoef]
 
             v = Xssq[icoef]*oldcoef + compute_grad(cd, X, residuals, weights, ipred)
-            newcoef = S(v, λ*α)/(Xssq[icoef] + λ*(1 - α))
+            λωj = λω(λ,ω,ipred)
+            newcoef = S(v, λωj*α)/(Xssq[icoef] + λωj*(1 - α))
 
             maxdelta = max(maxdelta, update_coef!(cd, coef, newcoef, icoef, ipred))
         end
@@ -264,6 +278,10 @@ function ssr{T}(coef::SparseCoefficients{T}, cd::NaiveCoordinateDescent{T})
     end
     s
 end
+
+# Does the linear predictor have an intercept?
+hasintercept{T}(cd::CoordinateDescent{T,false}) = false
+hasintercept{T}(cd::CoordinateDescent{T,true}) = true
 
 # Value of the intercept
 intercept{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T,false}) = zero(T)
@@ -303,12 +321,13 @@ type CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIte
     maxiter::Int                  # maximum number of iterations
     maxncoef::Int                 # maximum number of coefficients
     tol::T                        # tolerance
+    ω::@compat(Union{Vector{T},Void})           # coefficient-specific penalty weights
 
-    function CovarianceCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefiter::S)
+    function CovarianceCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefiter::S, ω::@compat(Union{Vector{T},Void}))
         new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Array(T, size(X, 2)),
             Array(T, size(X, 2)), Array(T, maxncoef, size(X, 2)), Array(T, size(X, 1)),
             Array(T, size(X, 1)), convert(T, NaN), coefiter, convert(T, NaN), α,
-            typemax(Int), maxncoef, tol)
+            typemax(Int), maxncoef, tol, ω)
     end
 end
 
@@ -489,7 +508,7 @@ end
 
 # Performs the cycle of all predictors
 function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{T}, λ::T, all::Bool)
-    @extractfields cd X Xty XtX Xssq α
+    @extractfields cd X Xty XtX Xssq α ω
 
     maxdelta = zero(T)
     if all
@@ -505,12 +524,13 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
                 oldcoef = zero(T)
             end
 
-            newcoef = S(s, λ*α)/(Xssq[ipred] + λ*(1 - α))
+            λωj = λω(λ,ω,ipred)
+            newcoef = S(s, λωj*α)/(Xssq[ipred] + λωj*(1 - α))
             if oldcoef != newcoef
                 if icoef == 0
                     # Adding a new variable to the model
                     nnz(coef) > cd.maxncoef &&
-                        error("maximum number of coefficients $(cd.maxncoef) exceeded at λ = $λ")
+                        error("maximum number of coefficients $(cd.maxncoef) exceeded at λ = $λ (λωj=$λωj)")
                     icoef = addcoef!(coef, ipred)
                     cd.coefitr = addcoef(cd.coefitr, icoef)
 
@@ -528,7 +548,8 @@ function cycle!{T}(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{
             oldcoef = coef.coef[icoef]
             oldcoef == 0 && continue
             s = Xty[ipred] + getXtX(cd, XtX, icoef, ipred)*oldcoef - compute_gradient(cd, XtX, coef, ipred)
-            newcoef = coef.coef[icoef] = S(s, λ*α)/(Xssq[ipred] + λ*(1 - α))
+            λωj = λω(λ,ω,ipred)
+            newcoef = coef.coef[icoef] = S(s, λωj*α)/(Xssq[ipred] + λωj*(1 - α))
             maxdelta = max(maxdelta, abs2(oldcoef - newcoef)*Xssq[ipred])
         end
     end
@@ -588,8 +609,8 @@ function cdfit!{T}(coef::SparseCoefficients{T}, cd::CoordinateDescent{T}, λ, cr
         if criterion == :obj
             objold = obj
             dev = ssr(coef, cd)
-            obj = dev/2 + λ*P(α, coef)
-            converged = objold - obj < tol*obj
+            obj = dev/2 + λ*P(cd.α, coef, cd.ω)
+            converged = abs(objold - obj) < tol*obj
         elseif criterion == :coef
             converged = maxdelta < tol
         end
@@ -641,7 +662,7 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbo
         irls_tol *= path.nulldev/2
     end
 
-    @extractfields cd X α
+    @extractfields cd X α ω
     @extractfields r offset eta wrkresid
     coefs = spzeros(T, size(X, 2), nλ)
     b0s = zeros(T, nλ)
@@ -656,7 +677,6 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbo
 
     if autoλ
         # No need to fit the first model
-        coefs[:, 1] = zero(T)
         b0s[1] = path.nullb0
         i = 2
     else
@@ -693,27 +713,34 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbo
                 # Compute Elastic Net objective
                 objold = obj
                 dev = deviance(r)
-                obj = dev/2 + curλ*P(α, newcoef)
+                obj = dev/2 + curλ*P(α, newcoef, ω)
 
                 if obj > objold + length(scratchmu)*eps(objold)
+                    verbose && println("step-halving because obj=$obj > $objold + $(length(scratchmu)*eps(objold)) = length(scratchmu)*eps(objold)")
                     f = 1.0
                     b0diff = b0 - oldb0
+                    coefdiff = SparseCoefficients{T}(size(X, 2))
+                    copy!(coefdiff,newcoef)
+                    for icoef = 1:nnz(oldcoef)
+                        coefdiff.coef[icoef] -= oldcoef.coef[icoef]
+                    end
                     while obj > objold
+                        # verbose && println("f=$f: $obj > $objold, dev=$dev, b0=$b0, newcoef=$newcoef")
                         f /= 2.; f > minStepFac || error("step-halving failed at beta = $(newcoef)")
                         for icoef = 1:nnz(newcoef)
                             oldcoefval = icoef > nnz(oldcoef) ? zero(T) : oldcoef.coef[icoef]
-                            newcoef.coef[icoef] = oldcoefval+f*(newcoef.coef[icoef] - oldcoefval)
+                            newcoef.coef[icoef] = oldcoefval+f*(coefdiff.coef[icoef])
                         end
                         b0 = oldb0+f*b0diff
                         updatemu!(r, linpred!(scratchmu, cd, newcoef, b0))
                         dev = deviance(r)
-                        obj = dev/2 + curλ*P(α, newcoef)
+                        obj = dev/2 + curλ*P(α, newcoef, ω)
                     end
                 end
 
                 # Determine if we have converged
                 if criterion == :obj
-                    converged = objold - obj < irls_tol*obj
+                    converged = abs(objold - obj) < irls_tol*obj
                 elseif criterion == :coef
                     maxdelta = zero(T)
                     Xssq = cd.Xssq
@@ -741,11 +768,12 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbo
             b0s[i] = b0
 
             # Test whether we should continue
-            if i == nλ || (autoλ && last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
-                           pct_dev[i] > MAX_DEV_FRAC)
+            if i == nλ || (autoλ && (last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
+                           pct_dev[i] > MAX_DEV_FRAC))
                 break
             end
 
+            verbose && println("$i: λ=$curλ, pct_dev=$(pct_dev[i])")
             i += 1
         end
     end
@@ -805,11 +833,12 @@ function StatsBase.fit!{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=fa
         b0s[i] = intercept(newcoef, cd)
 
         # Test whether we should continue
-        if i == nλ || (autoλ && last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
-                       pct_dev[i] > MAX_DEV_FRAC)
+        if i == nλ || (autoλ && (last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
+                       pct_dev[i] > MAX_DEV_FRAC))
             break
         end
 
+        verbose && println("$i: λ=$curλ, pct_dev=$(pct_dev[i])")
         i += 1
     end
 

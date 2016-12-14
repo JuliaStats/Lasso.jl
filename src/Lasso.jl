@@ -13,10 +13,12 @@ import Base.LinAlg.BlasReal
 include("FusedLasso.jl")
 include("TrendFiltering.jl")
 
-using Reexport, StatsBase, .Util
+using Reexport, StatsBase, .Util, MLBase
 @reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
 using GLM.FPVector, GLM.wrkwt!
-export LassoPath, fit, fit!, coef
+export RegularizationPath, LassoPath, GammaLassoPath, fit, fit!, coef, predict,
+    minAICc, hasintercept, df, aicc, distfun, linkfun, cross_validate_path
+
 
 ## HELPERS FOR SPARSE COEFFICIENTS
 
@@ -159,9 +161,10 @@ function addcoef(x::RandomCoefficientIterator, icoef::Int)
 end
 addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
 
+abstract RegularizationPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel})} <: RegressionModel
 ## LASSO PATH
 
-type LassoPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel}),T} <: RegressionModel
+type LassoPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel}),T} <: RegularizationPath{S}
     m::S
     nulldev::T                    # null deviance
     nullb0::T                     # intercept of null model, if one was fit
@@ -178,7 +181,7 @@ type LassoPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel}),T} <: Regre
 end
 
 function Base.show(io::IO, path::LassoPath)
-    prefix = isa(path.m, GeneralizedLinearModel) ? string(typeof(path.m.rr.d).name.name, " ") : "" 
+    prefix = isa(path.m, GeneralizedLinearModel) ? string(typeof(distfun(path)).name.name, " ") : ""
     println(io, prefix*"Lasso Solution Path ($(size(path.coefs, 2)) solutions for $(size(path.coefs, 1)) predictors in $(path.niter) iterations):")
 
     coefs = path.coefs
@@ -190,8 +193,6 @@ function Base.show(io::IO, path::LassoPath)
     Base.showarray(io, [path.λ path.pct_dev ncoefs]; header=false)
 end
 
-StatsBase.coef(path::LassoPath) = path.coefs
-
 ## MODEL CONSTRUCTION
 
 # Controls early stopping criteria with automatic λ
@@ -199,16 +200,27 @@ const MIN_DEV_FRAC_DIFF = 1e-5
 const MAX_DEV_FRAC = 0.999
 
 # Compute automatic λ values based on X'y and λminratio
-function computeλ(Xy, λminratio, α, nλ)
+function computeλ(Xy, λminratio, α, nλ, ω::@compat(Union{Vector,Void}))
     λmax = abs(Xy[1])
-    for i = 1:length(Xy)
+    if !isa(ω, Void)
+        λmax /= ω[1]
+    end
+    for i = 2:length(Xy)
         x = abs(Xy[i])
-        λmax = ifelse(x > λmax, x, λmax)
+        if !isa(ω, Void)
+            x /= ω[i]
+        end
+        if x > λmax
+            λmax = x
+        end
     end
     λmax /= α
     logλmax = log(λmax)
     λ = exp(linspace(logλmax, logλmax + log(λminratio), nλ))
 end
+
+# rescales A so that it sums to base
+rescale(A,base) = A * (base / sum(A))
 
 function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
                                                      X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
@@ -222,7 +234,8 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
                                                      naivealgorithm::Bool=(!isa(d, Normal) || !isa(l, IdentityLink) || size(X, 2) > 5*size(X, 1)),
                                                      dofit::Bool=true,
                                                      irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
-                                                     maxncoef::Int=min(size(X, 2), 2*size(X, 1)), fitargs...)
+                                                     maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
+                                                     penalty_factor::@compat(Union{Vector,Void})=nothing, fitargs...)
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
     n = length(y)
     length(wts) == n || error("length(wts) = $(length(wts)) should be 0 or $n")
@@ -242,8 +255,16 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
     α = convert(T, α)
     λminratio = convert(T, λminratio)
     coefitr = randomize ? RandomCoefficientIterator() : (1:0)
-    cd = naivealgorithm ? NaiveCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, 1e-7, coefitr) :
-                          CovarianceCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, 1e-7, coefitr)
+
+    # penalty_factor (ω) defaults to a vector of ones
+    ω = penalty_factor
+    if !isa(ω, Void)
+        # following glmnet rescale penalty factors to sum to the number of coefficients
+        ω = rescale(ω,size(X, 2))
+    end
+
+    cd = naivealgorithm ? NaiveCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, 1e-7, coefitr, ω) :
+                          CovarianceCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, 1e-7, coefitr, ω)
 
     # GLM response initialization
     autoλ = λ == nothing
@@ -270,7 +291,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
                 muscratch = mu.*wts
             end
             Xy = X'muscratch
-            λ = computeλ(Xy, λminratio, α, nλ)
+            λ = computeλ(Xy, λminratio, α, nλ, ω)
         else
             λ = convert(Vector{T}, λ)
         end
@@ -281,13 +302,13 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
         # Fit to find null deviance
         # Maybe we should reuse this GlmResp object?
         nullmodel = fit(GeneralizedLinearModel, ones(T, n, ifelse(intercept, 1, 0)), y, d, l;
-                        wts=wts, offset=offset, convTol=irls_tol)
+                        wts=wts, offset=offset, convTol=irls_tol, dofit=dofit)
         nulldev = deviance(nullmodel)
 
         if autoλ
             # Find max λ
             Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwts)
-            λ = computeλ(Xy, λminratio, α, nλ)
+            λ = computeλ(Xy, λminratio, α, nλ, ω)
             nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
         else
             λ = convert(Vector{T}, λ)
@@ -301,10 +322,186 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
 
     # Fit path
     path = LassoPath{typeof(model),T}(model, nulldev, nullb0, λ, autoλ, Xnorm)
-    dofit && fit!(path; irls_tol=irls_tol, fitargs...)
+    if dofit
+        fit!(path; irls_tol=irls_tol, fitargs...)
+    else
+        path.λ = zeros(T, 0)
+        path.pct_dev = zeros(T, 0)
+        path.coefs = spzeros(T, p, 0)
+        path.b0 = zeros(T, 0)
+        path.niter = 0
+    end
     path
 end
 
+StatsBase.nobs(path::RegularizationPath) = length(path.m.rr.y)
+
+
+dispersion_parameter(path::RegularizationPath) = GLM.dispersion_parameter(distfun(path))
+
+function StatsBase.loglikelihood(path::RegularizationPath)
+    n = nobs(path)
+    if typeof(path.m) <: LinearModel
+        -0.5*n.*log(deviance(path))
+    else
+        -0.5*n.*deviance(path)
+    end
+end
+
+if Pkg.installed("StatsBase") >= v"0.8.0"
+    import StatsBase.df, StatsBase.aicc
+end
+
+"""
+    df(path::RegularizationPath)
+
+Approximates the degrees-of-freedom in each segment of the path as the number of non zero coefficients
+plus a dispersion parameter when appropriate.
+Note that for GammaLassoPath this may be a crude approximation, as gamlr does this differently.
+"""
+function df(path::RegularizationPath)
+    nλ = length(path.λ)
+    βs = coef(path)
+    dof = zeros(Int,nλ)
+    for s=1:nλ
+        dof[s] = sum(βs[:,s].!=0)
+    end
+
+    if dispersion_parameter(path)
+        # add one for dispersion_parameter
+        dof+=1
+    end
+
+    dof
+end
+
+function aicc(path::RegularizationPath;k=2)
+    d = df(path)
+    n = nobs(path)
+    ic = -2loglikelihood(path) + k*d + k*d.*(d+1)./(n-d-1)
+    ic[d.+1 .> n] = realmax(eltype(ic))
+    ic
+end
+
+minAICc(path::RegularizationPath;k=2)=indmin(aicc(path;k=k))
+
+hasintercept(path::RegularizationPath) = hasintercept(path.m.pp)
+
+#Consistent with StatsBase.coef, if the model has an intercept it is included.
+function StatsBase.coef(path::RegularizationPath; select=:all, nCVfolds=10)
+    if length(path.λ) == 0
+        X = path.m.pp.X
+        p = size(X,2)
+        if hasintercept(path)
+            p+=1
+        end
+        return zeros(eltype(X),p)
+    end
+
+    if select == :all
+        if hasintercept(path)
+            vcat(path.b0',path.coefs)
+        else
+            path.coefs
+        end
+    elseif select == :AICc
+        if hasintercept(path)
+            vec(vcat(path.b0[minAICc(path)],path.coefs[:,minAICc(path)]))
+        else
+            path.coefs[:,minAICc(path)]
+        end
+    elseif select == :CVmin || select == :CV1se
+        gen = Kfold(length(path.m.rr.y),nCVfolds)
+        segCV = cross_validate_path(path;gen=gen,select=select)
+        if hasintercept(path)
+            vec(vcat(path.b0[segCV],path.coefs[:,segCV]))
+        else
+            path.coefs[:,segCV]
+        end
+    else
+        error("unknown selector $select")
+    end
+end
+
+## Prediction function for GLMs
+function StatsBase.predict{T<:AbstractFloat}(path::RegularizationPath, newX::AbstractMatrix{T}; offset::FPVector=Array(T,0), select=:all)
+    # add an interecept to newX if the model has one
+    if hasintercept(path)
+        newX = [ones(eltype(newX),size(newX,1),1) newX]
+    end
+
+    # calculate etas for each obs x segment
+    eta = newX * coef(path;select=select)
+
+    # get model
+    mm = path.m
+
+    # adjust for any offset
+    if length(mm.rr.offset) > 0
+        length(offset) == size(newX, 1) ||
+            throw(ArgumentError("fit with offset, so `offset` kw arg must be an offset of length `size(newX, 1)`"))
+        broadcast!(+, eta, eta, offset)
+    else
+        length(offset) > 0 && throw(ArgumentError("fit without offset, so value of `offset` kw arg does not make sense"))
+    end
+
+    if typeof(mm) <: LinearModel
+        eta
+    else
+        # invert all etas to mus
+        μ(η) = linkinv(mm.rr.l, η)
+        map(μ,eta)
+    end
+end
+
+"distribution of underlying GLM"
+distfun{M<:LinearModel}(path::RegularizationPath{M}) = Normal()
+distfun(path::RegularizationPath) = path.m.rr.d
+
+"link of underlying GLM"
+GLM.linkfun(path::RegularizationPath) = (typeof(path.m) <: LinearModel) ? IdentityLink() : path.m.rr.l
+
+"deviance at each segment of the path for the fitted model and data"
+StatsBase.deviance(path::RegularizationPath) = (1 .- path.pct_dev) .* path.nulldev # * nobs(path)
+
+"""
+deviance at each segement of the path for (potentially new) data X and y
+select=:all or :AICc like in coef()
+"""
+function StatsBase.deviance{T<:AbstractFloat,V<:FPVector}(path::RegularizationPath, X::AbstractMatrix{T}, y::V;
+                    offset::FPVector=Array(T,0), select=:all,
+                    wts::FPVector=ones(T, length(y)))
+    μ = predict(path, X; offset=offset, select=select)
+    deviance(path, y, μ, wts)
+end
+
+"""
+deviance at each segement of the path for (potentially new) y and predicted values μ
+"""
+function StatsBase.deviance{T<:AbstractFloat,V<:FPVector}(path::RegularizationPath, y::V, μ::AbstractArray{T},
+                wts::FPVector=ones(T, length(y)))
+    # get model specs from path
+    d = distfun(path)
+
+    # rescale weights
+    wts .*= convert(T, 1/sum(wts))
+
+    # closure for deviance of a single observation
+    dev(ys,μs,ws) = devresid(d, ys, μs, ws)
+
+    # deviances of all obs x segment
+    devresidv = broadcast(dev,y,μ,wts)
+
+    # deviance is just their sum
+    if size(μ,2) > 1
+        vec(sum(devresidv,1))
+    else
+        sum(devresidv)
+    end
+end
+
 include("coordinate_descent.jl")
+include("gammalasso.jl")
+include("cross_validation.jl")
 
 end
