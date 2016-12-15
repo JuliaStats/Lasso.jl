@@ -119,27 +119,16 @@ function addcoefs!(coefs::SparseMatrixCSC, newcoef::SparseCoefficients, i::Int)
 end
 
 ## COEFFICIENT ITERATION IN SEQUENTIAL OR RANDOM ORDER
-
-if VERSION >= v"0.4-dev+1915"
-    # Julia 0.4 has a nice interface that lets us do random coefficient
-    # iteration quickly.
-    immutable RandomCoefficientIterator
-        rng::MersenneTwister
-        rg::Base.Random.RangeGeneratorInt{Int,@compat UInt}
-        coeforder::Vector{Int}
-    end
-    const RANDOMIZE_DEFAULT = true
-
-    RandomCoefficientIterator() =
-        RandomCoefficientIterator(MersenneTwister(1337), Base.Random.RangeGenerator(1:2), Int[])
-else
-    immutable RandomCoefficientIterator
-        RandomCoefficientIterator() = error("randomization not supported on Julia 0.3")
-    end
-    const RANDOMIZE_DEFAULT = false
+immutable RandomCoefficientIterator
+    rng::MersenneTwister
+    rg::Base.Random.RangeGeneratorInt{Int,UInt}
+    coeforder::Vector{Int}
 end
+const RANDOMIZE_DEFAULT = true
 
-typealias CoefficientIterator @compat Union{UnitRange{Int},RandomCoefficientIterator}
+RandomCoefficientIterator() =
+    RandomCoefficientIterator(MersenneTwister(1337), Base.Random.RangeGenerator(1:2), Int[])
+typealias CoefficientIterator Union{UnitRange{Int},RandomCoefficientIterator}
 
 # Iterate over coefficients in random order
 function Base.start(x::RandomCoefficientIterator)
@@ -161,10 +150,10 @@ function addcoef(x::RandomCoefficientIterator, icoef::Int)
 end
 addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
 
-abstract RegularizationPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel})} <: RegressionModel
+abstract RegularizationPath{S<:Union{LinearModel,GeneralizedLinearModel}} <: RegressionModel
 ## LASSO PATH
 
-type LassoPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel}),T} <: RegularizationPath{S}
+type LassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: RegularizationPath{S}
     m::S
     nulldev::T                    # null deviance
     nullb0::T                     # intercept of null model, if one was fit
@@ -200,7 +189,7 @@ const MIN_DEV_FRAC_DIFF = 1e-5
 const MAX_DEV_FRAC = 0.999
 
 # Compute automatic λ values based on X'y and λminratio
-function computeλ(Xy, λminratio, α, nλ, ω::@compat(Union{Vector,Void}))
+function computeλ(Xy, λminratio, α, nλ, ω::Union{Vector,Void})
     λmax = abs(Xy[1])
     if !isa(ω, Void)
         λmax /= ω[1]
@@ -225,17 +214,17 @@ rescale(A,base) = A * (base / sum(A))
 function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
                                                      X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
                                                      l::Link=canonicallink(d);
-                                                     wts::@compat(Union{FPVector,Void})=ones(T, length(y)),
+                                                     wts::Union{FPVector,Void}=ones(T, length(y)),
                                                      offset::V=similar(y, 0),
                                                      α::Number=one(eltype(y)), nλ::Int=100,
                                                      λminratio::Number=ifelse(size(X, 1) < size(X, 2), 0.01, 1e-4),
-                                                     λ::@compat(Union{Vector,Void})=nothing, standardize::Bool=true,
+                                                     λ::Union{Vector,Void}=nothing, standardize::Bool=true,
                                                      intercept::Bool=true,
                                                      naivealgorithm::Bool=(!isa(d, Normal) || !isa(l, IdentityLink) || size(X, 2) > 5*size(X, 1)),
                                                      dofit::Bool=true,
                                                      irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
                                                      maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
-                                                     penalty_factor::@compat(Union{Vector,Void})=nothing, fitargs...)
+                                                     penalty_factor::Union{Vector,Void}=nothing, fitargs...)
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
     n = length(y)
     length(wts) == n || error("length(wts) = $(length(wts)) should be 0 or $n")

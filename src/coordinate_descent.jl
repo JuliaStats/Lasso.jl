@@ -2,7 +2,7 @@
 S(z, γ) = abs(z) <= γ ? zero(z) : ifelse(z > 0, z - γ, z + γ)
 
 # Elastic net penalty with parameter α and given coefficients
-function P{T}(α::T, β::SparseCoefficients{T}, ω::@compat(Void))
+function P{T}(α::T, β::SparseCoefficients{T}, ω::Void)
     x = zero(T)
     @inbounds @simd for i = 1:nnz(β)
         x += (1 - α)/2*abs2(β.coef[i]) + α*abs(β.coef[i])
@@ -35,9 +35,9 @@ type NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator
     maxiter::Int                  # maximum number of iterations
     maxncoef::Int                 # maximum number of coefficients
     tol::T                        # tolerance
-    ω::@compat(Union{Vector{T},Void})   # coefficient-specific penalty weights
+    ω::Union{Vector{T},Void}      # coefficient-specific penalty weights
 
-    NaiveCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefitr::S, ω::@compat(Union{Vector{T},Void})) =
+    NaiveCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefitr::S, ω::Union{Vector{T},Void}) =
         new(X, zero(T), zeros(T, size(X, 2)), zeros(T, maxncoef), Array(T, size(X, 1)), zero(T),
             Array(T, size(X, 1)), Array(T, size(X, 1)), convert(T, NaN), coefitr, convert(T, NaN),
             α, typemax(Int), maxncoef, tol, ω)
@@ -143,13 +143,6 @@ function update!{T,Intercept}(cd::NaiveCoordinateDescent{T,Intercept}, coef::Spa
     cd
 end
 
-if VERSION < v"0.4.0-dev+707"
-    # no-op inline macro for old Julia
-    macro inline(x)
-        esc(x)
-    end
-end
-
 # Offset of each residual. This is used only for sparse matrices with
 # an intercept, so that we can update only residuals for which a
 # changed coefficient is non-zero instead of updating all of them. In
@@ -219,7 +212,7 @@ end
     end
 end
 
-λω(λ,ω::@compat(Void),ipred::Int) = λ
+λω(λ,ω::Void,ipred::Int) = λ
 λω(λ,ω::Vector,ipred::Int) = λ*ω[ipred]
 
 # Performs the cycle of all predictors
@@ -321,9 +314,9 @@ type CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIte
     maxiter::Int                  # maximum number of iterations
     maxncoef::Int                 # maximum number of coefficients
     tol::T                        # tolerance
-    ω::@compat(Union{Vector{T},Void})           # coefficient-specific penalty weights
+    ω::Union{Vector{T},Void}      # coefficient-specific penalty weights
 
-    function CovarianceCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefiter::S, ω::@compat(Union{Vector{T},Void}))
+    function CovarianceCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefiter::S, ω::Union{Vector{T},Void})
         new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Array(T, size(X, 2)),
             Array(T, size(X, 2)), Array(T, maxncoef, size(X, 2)), Array(T, size(X, 1)),
             Array(T, size(X, 1)), convert(T, NaN), coefiter, convert(T, NaN), α,

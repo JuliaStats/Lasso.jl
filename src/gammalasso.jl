@@ -10,7 +10,7 @@
 
 ## GAMMA LASSO PATH
 
-type GammaLassoPath{S<:@compat(Union{LinearModel,GeneralizedLinearModel}),T} <: RegularizationPath{S}
+type GammaLassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: RegularizationPath{S}
     m::S
     nulldev::T                    # null deviance
     nullb0::T                     # intercept of null model, if one was fit
@@ -75,12 +75,12 @@ end
 function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{GammaLassoPath},
                                                      X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
                                                      l::Link=canonicallink(d);
-                                                     γ::@compat(Union{Number,Vector{Number}})=0.0,
-                                                     wts::@compat(Union{FPVector,Void})=ones(T, length(y)),
+                                                     γ::Union{Number,Vector{Number}}=0.0,
+                                                     wts::Union{FPVector,Void}=ones(T, length(y)),
                                                      offset::AbstractVector=similar(y, 0),
                                                      α::Number=one(eltype(y)), nλ::Int=100,
                                                      λminratio::Number=ifelse(size(X, 1) < size(X, 2), 0.01, 1e-4),
-                                                     λ::@compat(Union{Vector,Void})=nothing, standardize::Bool=true,
+                                                     λ::Union{Vector,Void}=nothing, standardize::Bool=true,
                                                      intercept::Bool=true,
                                                      naivealgorithm::Bool=(!isa(d, Normal) || !isa(l, IdentityLink) || size(X, 2) > 5*size(X, 1)),
                                                      dofit::Bool=true,
