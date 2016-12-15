@@ -1,6 +1,4 @@
 using MLBase
-import Compat.view
-
 # from Taddy (2015, distrom):
 # CV selection rules: both CV1se, which chooses the largest λt with mean
 # OOS deviance no more than one standard error away from minimum, and CVmin,

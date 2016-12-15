@@ -1,4 +1,4 @@
-using Lasso, GLM, Distributions, GLMNet, FactCheck, Compat
+using Lasso, GLM, Distributions, GLMNet, FactCheck
 
 datapath = joinpath(dirname(@__FILE__), "data")
 

@@ -1,8 +1,3 @@
-# using Reexport, StatsBase, ..Util, Compat
-# @reexport using GLM, Lasso
-# using GLM.FPVector, GLM.wrkwt!
-# export GammaLassoPath
-
 # Implements the Taddy (2016)
 # One-step estimator paths for concave regularization. arXiv
 # Preprint 	arXiv:1308.5623v8. Retrieved from

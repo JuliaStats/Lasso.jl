@@ -1,5 +1,5 @@
 module Lasso
-using Compat, StatsBase
+using StatsBase
 module Util
     # Extract fields from object into function locals
     # See https://github.com/JuliaLang/julia/issues/9755
