@@ -1,7 +1,6 @@
 language: julia
 os:
   - linux
-  - osx
 julia:
   - 0.5
   - nightly
@@ -15,6 +14,6 @@ before_install:
     fi
 script:
   - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
-  - julia --check-bounds=yes -e 'Pkg.clone(pwd()); Pkg.build("Lasso"); Pkg.test("Lasso"; coverage=true)'
+  - if [ $TRAVIS_JULIA_VERSION = "nightly" ]; then julia --check-bounds=yes -e 'Pkg.clone(pwd()); Pkg.test("Lasso"; coverage=true)'; else julia -e 'Pkg.clone(pwd()); Pkg.test("Lasso")'; fi
 after_success:
   - if [ $TRAVIS_JULIA_VERSION = "nightly" ]; then julia -e 'cd(Pkg.dir("Lasso")); Pkg.add("Coverage"); using Coverage; Coveralls.submit(Coveralls.process_folder())'; fi
