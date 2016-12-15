@@ -19,7 +19,7 @@ function P{T}(α::T, β::SparseCoefficients{T}, ω::Vector{T})
 end
 
 abstract CoordinateDescent{T,Intercept,M<:AbstractMatrix} <: LinPred
-type NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator} <: CoordinateDescent{T,Intercept,M}
+type NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator,W<:Union{Vector,Void}} <: CoordinateDescent{T,Intercept,M}
     X::M                          # original design matrix
     μy::T                         # mean of y at current weights
     μX::Vector{T}                 # mean of X at current weights (in predictor order)
@@ -35,7 +35,7 @@ type NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator
     maxiter::Int                  # maximum number of iterations
     maxncoef::Int                 # maximum number of coefficients
     tol::T                        # tolerance
-    ω::Union{Vector{T},Void}      # coefficient-specific penalty weights
+    ω::W                          # coefficient-specific penalty weights
 
     NaiveCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefitr::S, ω::Union{Vector{T},Void}) =
         new(X, zero(T), zeros(T, size(X, 2)), zeros(T, maxncoef), Array(T, size(X, 1)), zero(T),
@@ -297,7 +297,7 @@ function linpred!{T}(mu::Vector{T}, cd::NaiveCoordinateDescent{T}, coef::SparseC
     mu
 end
 
-type CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator} <: CoordinateDescent{T,Intercept,M}
+type CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator,W<:Union{Vector,Void}} <: CoordinateDescent{T,Intercept,M}
     X::M                          # original design matrix
     μy::T                         # mean of y at current weights
     μX::Vector{T}                 # mean of X at current weights
@@ -314,7 +314,7 @@ type CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIte
     maxiter::Int                  # maximum number of iterations
     maxncoef::Int                 # maximum number of coefficients
     tol::T                        # tolerance
-    ω::Union{Vector{T},Void}      # coefficient-specific penalty weights
+    ω::W                          # coefficient-specific penalty weights
 
     function CovarianceCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefiter::S, ω::Union{Vector{T},Void})
         new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Array(T, size(X, 2)),
@@ -634,8 +634,10 @@ function wrkresp!(out, eta, wrkresid, offset)
     out
 end
 
+poststep(path::LassoPath, cd::CoordinateDescent, i::Int, coefs::SparseCoefficients) = nothing
+
 # Fits GLMs (outer and middle loops)
-function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbose::Bool=false, irls_maxiter::Int=30,
+function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::RegularizationPath{S,T}; verbose::Bool=false, irls_maxiter::Int=30,
                                                      cd_maxiter::Int=100000, cd_tol::Real=1e-7, irls_tol::Real=1e-7,
                                                      criterion=:coef, minStepFac::Real=0.001)
     irls_maxiter >= 1 || error("irls_maxiter must be positive")
@@ -766,6 +768,7 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbo
             end
 
             verbose && println("$i: λ=$curλ, pct_dev=$(pct_dev[i])")
+            poststep(path, cd, i, newcoef)
             i += 1
         end
     end
@@ -781,7 +784,7 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::LassoPath{S,T}; verbo
 end
 
 # Fits linear models (just the outer loop)
-function StatsBase.fit!{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=false,
+function StatsBase.fit!{S<:LinearModel,T}(path::RegularizationPath{S,T}; verbose::Bool=false,
                                           cd_maxiter::Int=10000, cd_tol::Real=1e-7, irls_tol::Real=1e-7,
                                           criterion=:coef, minStepFac::Real=eps())
     0 < minStepFac < 1 || error("minStepFac must be in (0, 1)")
@@ -831,6 +834,7 @@ function StatsBase.fit!{S<:LinearModel,T}(path::LassoPath{S,T}; verbose::Bool=fa
         end
 
         verbose && println("$i: λ=$curλ, pct_dev=$(pct_dev[i])")
+        poststep(path, cd, i, newcoef)
         i += 1
     end
 

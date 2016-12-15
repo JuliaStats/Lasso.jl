@@ -1,5 +1,5 @@
 module Lasso
-using Compat
+using Compat, StatsBase
 module Util
     # Extract fields from object into function locals
     # See https://github.com/JuliaLang/julia/issues/9755
@@ -150,10 +150,10 @@ function addcoef(x::RandomCoefficientIterator, icoef::Int)
 end
 addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
 
-abstract RegularizationPath{S<:Union{LinearModel,GeneralizedLinearModel}} <: RegressionModel
+abstract RegularizationPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: RegressionModel
 ## LASSO PATH
 
-type LassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: RegularizationPath{S}
+type LassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: RegularizationPath{S,T}
     m::S
     nulldev::T                    # null deviance
     nullb0::T                     # intercept of null model, if one was fit
@@ -169,9 +169,9 @@ type LassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: Regularization
         new(m, nulldev, nullb0, λ, autoλ, Xnorm)
 end
 
-function Base.show(io::IO, path::LassoPath)
+function Base.show(io::IO, path::RegularizationPath)
     prefix = isa(path.m, GeneralizedLinearModel) ? string(typeof(distfun(path)).name.name, " ") : ""
-    println(io, prefix*"Lasso Solution Path ($(size(path.coefs, 2)) solutions for $(size(path.coefs, 1)) predictors in $(path.niter) iterations):")
+    println(io, "$(prefix)$(typeof(path).name.name) ($(size(path.coefs, 2)) solutions for $(size(path.coefs, 1)) predictors in $(path.niter) iterations):")
 
     coefs = path.coefs
     ncoefs = zeros(Int, size(coefs, 2))
@@ -179,7 +179,7 @@ function Base.show(io::IO, path::LassoPath)
         ncoefs[i] = coefs.colptr[i+1] - coefs.colptr[i]
     end
     ncoefs[end] = nnz(coefs) - coefs.colptr[size(coefs, 2)] + 1
-    Base.showarray(io, [path.λ path.pct_dev ncoefs]; header=false)
+    show(io, CoefTable(Union{Vector{Int},Vector{Float64}}[path.λ, path.pct_dev, ncoefs], ["λ", "pct_dev", "ncoefs"], []))
 end
 
 ## MODEL CONSTRUCTION
@@ -252,8 +252,8 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
         ω = rescale(ω,size(X, 2))
     end
 
-    cd = naivealgorithm ? NaiveCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, 1e-7, coefitr, ω) :
-                          CovarianceCoordinateDescent{T,intercept,typeof(X),typeof(coefitr)}(X, α, maxncoef, 1e-7, coefitr, ω)
+    cd = naivealgorithm ? NaiveCoordinateDescent{T,intercept,typeof(X),typeof(coefitr),typeof(ω)}(X, α, maxncoef, 1e-7, coefitr, ω) :
+                          CovarianceCoordinateDescent{T,intercept,typeof(X),typeof(coefitr),typeof(ω)}(X, α, maxncoef, 1e-7, coefitr, ω)
 
     # GLM response initialization
     autoλ = λ == nothing
@@ -466,7 +466,7 @@ function StatsBase.deviance{T<:AbstractFloat,V<:FPVector}(path::RegularizationPa
 end
 
 """
-deviance at each segement of the path for (potentially new) y and predicted values μ
+deviance at each segment of the path for (potentially new) y and predicted values μ
 """
 function StatsBase.deviance{T<:AbstractFloat,V<:FPVector}(path::RegularizationPath, y::V, μ::AbstractArray{T},
                 wts::FPVector=ones(T, length(y)))
