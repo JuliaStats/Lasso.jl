@@ -210,7 +210,7 @@ function computeλ(Xy, λminratio, α, nλ, ω::Union{Vector,Void})
     end
     λmax /= α
     logλmax = log(λmax)
-    λ = exp(linspace(logλmax, logλmax + log(λminratio), nλ))
+    λ = exp.(linspace(logλmax, logλmax + log(λminratio), nλ))
 end
 
 # rescales A so that it sums to base
@@ -344,9 +344,9 @@ dispersion_parameter(path::RegularizationPath) = GLM.dispersion_parameter(distfu
 function StatsBase.loglikelihood(path::RegularizationPath)
     n = nobs(path)
     if typeof(path.m) <: LinearModel
-        -0.5*n.*log(deviance(path))
+        -0.5.*n.*log.(deviance(path))
     else
-        -0.5*n.*deviance(path)
+        -0.5.*n.*deviance(path)
     end
 end
 

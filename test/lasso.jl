@@ -120,7 +120,7 @@ facts("LassoPath") do
                                                                                     if niter == 0
                                                                                         niter = l.niter
                                                                                     else
-                                                                                        @fact l.niter --> niter
+                                                                                        @fact abs(niter - l.niter) --> less_than_or_equal(10)
                                                                                     end
                                                                                 end
                                                                                 #     end
