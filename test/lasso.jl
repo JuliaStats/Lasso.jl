@@ -103,18 +103,18 @@ facts("LassoPath") do
                                                                                     cd_tol=cd_tol, irls_tol=irls_tol, criterion=criterion, randomize=randomize,
                                                                                     α=alpha, offset=offset, penalty_factor=penalty_factor)
 
-                                                                            rd = (l.coefs - gbeta)./gbeta
-                                                                            rd[!isfinite(rd)] = 0
-                                                                            println("         coefs adiff = $(maxabs(l.coefs - gbeta)) rdiff = $(maxabs(rd))")
-                                                                            rd = (l.b0 - g.a0)./g.a0
-                                                                            rd[!isfinite(rd)] = 0
-                                                                            println("         b0    adiff = $(maxabs(l.b0 - g.a0)) rdiff = $(maxabs(rd))")
+                                                                            # rd = (l.coefs - gbeta)./gbeta
+                                                                            # rd[!isfinite(rd)] = 0
+                                                                            # println("         coefs adiff = $(maxabs(l.coefs - gbeta)) rdiff = $(maxabs(rd))")
+                                                                            # rd = (l.b0 - g.a0)./g.a0
+                                                                            # rd[!isfinite(rd)] = 0
+                                                                            # println("         b0    adiff = $(maxabs(l.b0 - g.a0)) rdiff = $(maxabs(rd))")
                                                                             if criterion==:obj
                                                                                 # nothing to compare results against at this point, we just make sure the code runs
                                                                             else
                                                                                 # @fact l.λ --> roughly(g.lambda, 5e-7)
-                                                                                # @fact l.coefs --> roughly(gbeta, 5e-7)
-                                                                                # @fact l.b0 --> roughly(g.a0, 2e-5)
+                                                                                @fact l.coefs --> roughly(gbeta, 5e-7)
+                                                                                @fact l.b0 --> roughly(g.a0, 2e-5)
 
                                                                                 # Ensure same number of iterations with all algorithms
                                                                                 if niter == 0
