@@ -48,12 +48,13 @@ Lasso paths
     ----------------- --------------------------------------------------------------- --------------------
     intercept         Whether to fit an (unpenalized) model intercept.                ``true``
     ----------------- --------------------------------------------------------------- --------------------
-    naivealgorithm    Whether to use the naive coordinate descent algorithm, which    ``true`` if more
-                      iteratively computes the dot product of the predictors with the than 5x as many
-                      residuals, as opposed to the covariance algorithm, which uses a predictors as
-                      precomputed Gram matrix. The naive algorithm is typically       observations or
-                      faster when there are many predictors that will not enter the   model is a GLM.
-                      model or when fitting generalized linear models.                ``false`` otherwise.
+    algorithm         Algorithm to use. The NaiveCoordinateDescent algorithm, which   NaiveCoordinateDescent
+                      iteratively computes the dot product of the predictors with the if more than 5x as
+                      residuals, as opposed to the CovarianceCoordinateDescent        many predictors as
+                      algorithm, which uses a precomputed Gram matrix.                observations or
+                      NaiveCoordinateDescent is typically faster when there are many  model is a GLM.
+                      predictors that will not enter the model or when fitting        CovarianceCoordinateDescent
+                      generalized linear models.                                      otherwise.
     ----------------- --------------------------------------------------------------- --------------------
     randomize         Whether to randomize the order in which coefficients are        ``true`` (if julia >= 0.4)
                       updated by coordinate descent. This can drastically speed

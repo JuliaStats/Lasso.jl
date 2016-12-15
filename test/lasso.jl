@@ -84,8 +84,8 @@ facts("LassoPath") do
                                                         for randomize = [false, true]
                                                             context(randomize ? "random" : "sequential") do
                                                                 niter = 0
-                                                                for naivealgorithm in (false, true)
-                                                                     context(naivealgorithm ? "naive" : "covariance") do
+                                                                for algorithm = [NaiveCoordinateDescent, CovarianceCoordinateDescent]
+                                                                     context(algorithm == NaiveCoordinateDescent ? "naive" : "covariance") do
                                                                          for spfit in (true,false)
                                                                              context(spfit ? "as SparseMatrixCSC" : "as Matrix") do
                                                                                 criterion = :coef
@@ -100,7 +100,7 @@ facts("LassoPath") do
                                                                                 end
                                                                                 # Now fit with Lasso
                                                                                 l = fit(LassoPath, spfit ? sparse(X) : X, y, dist, link,
-                                                                                        λ=g.lambda, naivealgorithm=naivealgorithm, intercept=intercept,
+                                                                                        λ=g.lambda, algorithm=algorithm, intercept=intercept,
                                                                                         cd_tol=cd_tol, irls_tol=irls_tol, criterion=criterion, randomize=randomize,
                                                                                         α=alpha, offset=offset, penalty_factor=penalty_factor)
                                                                                 rd = (l.coefs - gbeta)./gbeta
