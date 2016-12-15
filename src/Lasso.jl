@@ -474,7 +474,7 @@ function StatsBase.deviance{T<:AbstractFloat,V<:FPVector}(path::RegularizationPa
     d = distfun(path)
 
     # rescale weights
-    wts .*= convert(T, 1/sum(wts))
+    wts = wts .* convert(T, 1/sum(wts))
 
     # closure for deviance of a single observation
     dev(ys,μs,ws) = ws * devresid(d, ys, μs)
