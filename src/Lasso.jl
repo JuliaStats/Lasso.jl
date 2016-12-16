@@ -350,10 +350,6 @@ function StatsBase.loglikelihood(path::RegularizationPath)
     end
 end
 
-if Pkg.installed("StatsBase") >= v"0.8.0"
-    import StatsBase.df, StatsBase.aicc
-end
-
 """
     df(path::RegularizationPath)
 
@@ -361,7 +357,7 @@ Approximates the degrees-of-freedom in each segment of the path as the number of
 plus a dispersion parameter when appropriate.
 Note that for GammaLassoPath this may be a crude approximation, as gamlr does this differently.
 """
-function df(path::RegularizationPath)
+function StatsBase.df(path::RegularizationPath)
     nλ = length(path.λ)
     βs = coef(path)
     dof = zeros(Int,nλ)
@@ -377,7 +373,7 @@ function df(path::RegularizationPath)
     dof
 end
 
-function aicc(path::RegularizationPath;k=2)
+function StatsBase.aicc(path::RegularizationPath;k=2)
     d = df(path)
     n = nobs(path)
     ic = -2loglikelihood(path) + k*d + k*d.*(d+1)./(n-d-1)
