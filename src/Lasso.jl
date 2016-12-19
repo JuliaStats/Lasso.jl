@@ -387,7 +387,7 @@ hasintercept(path::RegularizationPath) = hasintercept(path.m.pp)
 
 #Consistent with StatsBase.coef, if the model has an intercept it is included.
 function StatsBase.coef(path::RegularizationPath; select=:all, nCVfolds=10)
-    if length(path.λ) == 0
+    if !isdefined(path,:coefs)
         X = path.m.pp.X
         p = size(X,2)
         if hasintercept(path)
