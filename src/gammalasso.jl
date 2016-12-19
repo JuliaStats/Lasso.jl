@@ -92,7 +92,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{GammaLassoPath},
     # GLM response initialization
     autoλ = λ == nothing
     model, nulldev, nullb0, λ = build_model(X, y, d, l, cd, λminratio, λ, wts .* T(1/sum(wts)),
-                                            Vector{T}(offset), α, nλ, ω, intercept, irls_tol)
+                                            Vector{T}(offset), α, nλ, ω, intercept, irls_tol, dofit)
 
     # Fit path
     path = GammaLassoPath{typeof(model),T}(model, nulldev, nullb0, λ, autoλ, γ, Xnorm)

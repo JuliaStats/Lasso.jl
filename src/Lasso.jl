@@ -219,7 +219,7 @@ rescale(A, base) = A * (base / sum(A))
 function build_model{T}(X::AbstractMatrix{T}, y::FPVector, d::Normal, l::IdentityLink,
                         lp::LinPred, λminratio::Real, λ::Union{Vector,Void},
                         wts::Union{FPVector,Void}, offset::Vector, α::Real, nλ::Int,
-                        ω::Union{Vector, Void}, intercept::Bool, irls_tol::Real)
+                        ω::Union{Vector, Void}, intercept::Bool, irls_tol::Real, dofit::Bool)
     # Special no-IRLS case
     mu = isempty(offset) ? y : y + offset
     nullb0 = intercept ? mean(mu, weights(wts)) : zero(T)
@@ -252,11 +252,11 @@ end
 function build_model{T}(X::AbstractMatrix{T}, y::FPVector, d::UnivariateDistribution, l::Link,
                         lp::LinPred, λminratio::Real, λ::Union{Vector,Void},
                         wts::Union{FPVector,Void}, offset::Vector, α::Real, nλ::Int,
-                        ω::Union{Vector, Void}, intercept::Bool, irls_tol::Real)
+                        ω::Union{Vector, Void}, intercept::Bool, irls_tol::Real, dofit::Bool)
     # Fit to find null deviance
     # Maybe we should reuse this GlmResp object?
     nullmodel = fit(GeneralizedLinearModel, ones(T, length(y), ifelse(intercept, 1, 0)), y, d, l;
-                    wts=wts, offset=offset, convTol=irls_tol)
+                    wts=wts, offset=offset, convTol=irls_tol, dofit=dofit)
     nulldev = deviance(nullmodel)
 
     if λ == nothing
@@ -326,7 +326,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
     # GLM response initialization
     autoλ = λ == nothing
     model, nulldev, nullb0, λ = build_model(X, y, d, l, cd, λminratio, λ, wts .* T(1/sum(wts)),
-                                            Vector{T}(offset), α, nλ, ω, intercept, irls_tol)
+                                            Vector{T}(offset), α, nλ, ω, intercept, irls_tol, dofit)
 
     # Fit path
     path = LassoPath{typeof(model),T}(model, nulldev, nullb0, λ, autoλ, Xnorm)
