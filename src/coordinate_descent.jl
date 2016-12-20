@@ -726,7 +726,7 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::RegularizationPath{S,
                             newcoef.coef[icoef] = oldcoefval+f*(coefdiff.coef[icoef])
                         end
                         b0 = oldb0+f*b0diff
-                        updatemu!(r, linpred!(scratchmu, cd, newcoef, b0))
+                        updateμ!(r, linpred!(scratchmu, cd, newcoef, b0))
                         dev = deviance(r)
                         obj = dev/2 + curλ*P(α, newcoef, ω)
                     end
