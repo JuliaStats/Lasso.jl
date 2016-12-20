@@ -37,7 +37,7 @@ type NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator
     tol::T                        # tolerance
     ω::W                          # coefficient-specific penalty weights
 
-    NaiveCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefitr::S, ω::Union{Vector{T},Void}) =
+    NaiveCoordinateDescent(X::M, α::Real, maxncoef::Int, tol::Real, coefitr::S, ω::Union{Vector{T},Void}) =
         new(X, zero(T), zeros(T, size(X, 2)), zeros(T, maxncoef), Array(T, size(X, 1)), zero(T),
             Array(T, size(X, 1)), Array(T, size(X, 1)), convert(T, NaN), coefitr, convert(T, NaN),
             α, typemax(Int), maxncoef, tol, ω)
@@ -316,7 +316,7 @@ type CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIte
     tol::T                        # tolerance
     ω::W                          # coefficient-specific penalty weights
 
-    function CovarianceCoordinateDescent(X::M, α::T, maxncoef::Int, tol::T, coefiter::S, ω::Union{Vector{T},Void})
+    function CovarianceCoordinateDescent(X::M, α::Real, maxncoef::Int, tol::Real, coefiter::S, ω::Union{Vector{T},Void})
         new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Array(T, size(X, 2)),
             Array(T, size(X, 2)), Array(T, maxncoef, size(X, 2)), Array(T, size(X, 1)),
             Array(T, size(X, 1)), convert(T, NaN), coefiter, convert(T, NaN), α,
