@@ -385,15 +385,38 @@ minAICc(path::RegularizationPath;k=2)=indmin(aicc(path;k=k))
 
 hasintercept(path::RegularizationPath) = hasintercept(path.m.pp)
 
+"""
+size(path) returns (p,nλ) where p is the number of coefficients (including
+any intercept) and nλ is the number of path segments.
+If model was only initialized but not fit, returns (p,1).
+"""
+function Base.size(path::RegularizationPath)
+  if isdefined(path,:coefs)
+    p,nλ = size(path.coefs)
+  else
+    X = path.m.pp.X
+    p = size(X,2)
+    nλ = 1
+  end
+
+  if hasintercept(path)
+    p += 1
+  end
+
+  p,nλ
+end
+
+"""
+coef(path) returns a p by nλ coefficient array where p is the number of
+coefficients (including any intercept) and nλ is the number of path segments.
+If model was only initialized but not fit, returns a p vector of zeros.
+"""
 #Consistent with StatsBase.coef, if the model has an intercept it is included.
 function StatsBase.coef(path::RegularizationPath; select=:all, nCVfolds=10)
     if !isdefined(path,:coefs)
         X = path.m.pp.X
-        p = size(X,2)
-        if hasintercept(path)
-            p+=1
-        end
-        return zeros(eltype(X),p)
+        p,nλ = size(path)
+        return zeros(eltype(X),p,nλ)
     end
 
     if select == :all

@@ -40,6 +40,8 @@ function gen_penalty_factors(X,nonone_penalty_factors;sparcity=0.7)
     penalty_factor, penalty_factor_glmnet
 end
 
+
+
 # Test against GLMNet
 facts("LassoPath") do
     for (dist, link) in ((Normal(), IdentityLink()), (Binomial(), LogitLink()), (Poisson(), LogLink()))
@@ -51,6 +53,21 @@ facts("LassoPath") do
                     yoff = randn(length(y))
                     for intercept = (false, true)
                         context("$(intercept ? "w/" : "w/o") intercept") do
+                            context("unfitted LassoPath (dofit=false)") do
+                                for spfit in (true,false)
+                                    context(spfit ? "as SparseMatrixCSC" : "as Matrix") do
+                                        l = fit(LassoPath, spfit ? sparse(X) : X, y, dist, link,
+                                            intercept=intercept, dofit=false)
+
+                                        p = size(X,2)
+                                        if intercept
+                                            p += 1
+                                        end
+                                        @fact size(l) --> (p,1)
+                                        @fact coef(l) --> zeros(eltype(X),p,1)
+                                    end
+                                end
+                            end
                             for alpha = [1, 0.5]
                                 context("alpha = $alpha") do
                                     for nonone_penalty_factors in (false,true)
