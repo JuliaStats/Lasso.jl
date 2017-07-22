@@ -46,7 +46,7 @@ Lasso paths
     standardize       Whether to standardize predictors (the columns of ``X``) to     ``true``
                       unit standard deviation before fitting. If one of the
                       predictors is an intercept (i.e. a constant), then set 
-                      ``standardize = false``.  
+                      ``standardize = false`` and ``intercept = false``.
     ----------------- --------------------------------------------------------------- --------------------
     intercept         Whether to fit an (unpenalized) model intercept.                ``true``
     ----------------- --------------------------------------------------------------- --------------------
