@@ -39,12 +39,14 @@ Lasso paths
                       :math:`\lambda_{\text{max}}`, the smallest λ value yielding a   Otherwise,
                       null model, to                                                  ``λminratio = 0.001``.
                       :math:`\lambda\text{minratio} * \lambda_{\text{max}}`. If the
-                      proportion of  deviance explained exceeds 0.999 or the
+                      proportion of  deviance explained exceeds 0.999 or the 
                       difference between the deviance explained by successive λ
                       values falls below :math:`10^{-5}`, the path stops early.
     ----------------- --------------------------------------------------------------- --------------------
-    standardize       Whether to standardize predictors to unit standard deviation    ``true``
-                      before fitting.
+    standardize       Whether to standardize predictors (the columns of ``X``) to     ``true``
+                      unit standard deviation before fitting. If one of the
+                      predictors is an intercept (i.e. a constant), then set 
+                      ``standardize = false``.  
     ----------------- --------------------------------------------------------------- --------------------
     intercept         Whether to fit an (unpenalized) model intercept.                ``true``
     ----------------- --------------------------------------------------------------- --------------------
