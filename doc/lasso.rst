@@ -43,7 +43,7 @@ Lasso paths
                       difference between the deviance explained by successive λ
                       values falls below :math:`10^{-5}`, the path stops early.
     ----------------- --------------------------------------------------------------- --------------------
-    standardize       Whether to standardize predictors (the columns of `X`) to     ``true``
+    standardize       Whether to standardize predictors (the columns of `X`) to       ``true``
                       unit standard deviation before fitting. If one of the
                       predictors is an intercept (i.e. a constant), then set 
                       `standardize = false` and `intercept = false`.
