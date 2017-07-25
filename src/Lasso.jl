@@ -301,6 +301,10 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
     # Standardize predictors if requested
     if standardize
         Xnorm = vec(full(std(X, 1, corrected=false)))
+        if any(x -> x == zero(T), Xnorm) 
+            warn("""One of the predicators (columns of X) is a constant, so it can not be standardized. 
+                  To include a constant predicator set standardize = false and intercept = false""") 
+        end
         for i = 1:length(Xnorm)
             @inbounds Xnorm[i] = 1/Xnorm[i]
         end
