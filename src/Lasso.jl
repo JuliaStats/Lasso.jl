@@ -172,7 +172,8 @@ end
 
 function Base.show(io::IO, path::RegularizationPath)
     prefix = isa(path.m, GeneralizedLinearModel) ? string(typeof(distfun(path)).name.name, " ") : ""
-    println(io, "$(prefix)$(typeof(path).name.name) ($(size(path.coefs, 2)) solutions for $(size(path.coefs, 1)) predictors in $(path.niter) iterations):")
+    pathsize = size(path)
+    println(io, "$(prefix)$(typeof(path).name.name) ($(pathsize[2])) solutions for $(pathsize[1]) predictors in $(path.niter) iterations):")
 
     if isdefined(path, :coefs)
         coefs = path.coefs
@@ -258,15 +259,14 @@ function build_model{T}(X::AbstractMatrix{T}, y::FPVector, d::UnivariateDistribu
     nullmodel = fit(GeneralizedLinearModel, ones(T, length(y), ifelse(intercept, 1, 0)), y, d, l;
                     wts=wts, offset=offset, convTol=irls_tol, dofit=dofit)
     nulldev = deviance(nullmodel)
+    nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
 
     if λ == nothing
         # Find max λ
         Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwt)
         λ = computeλ(Xy, λminratio, α, nλ, ω)
-        nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
     else
         λ = convert(Vector{T}, λ)
-        nullb0 = zero(T)
     end
 
     eta = GLM.initialeta!(d, l, similar(y), y, wts, offset)
