@@ -12,34 +12,35 @@ type GammaLassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: Regulariz
     λ::Vector{T}                  # shrinkage parameters
     autoλ::Bool                   # whether λ is automatically determined
     γ::Vector{T}                  # controls the concavity of the regularization path (γ=0 is Lasso) with size(X,2)
+    penalty_factor::Vector{T}     # regularization weights for each coeficient (multiplied by ω), defaults to 1 vector with size(X,2)
     Xnorm::Vector{T}              # original squared norms of columns of X before standardization
     pct_dev::Vector{T}            # percent deviance explained by each model
     coefs::SparseMatrixCSC{T,Int} # model coefficients
     b0::Vector{T}                 # model intercepts
     niter::Int                    # number of coordinate descent iterations
 
-    GammaLassoPath(m, nulldev::T, nullb0::T, λ::Vector{T}, autoλ::Bool, γ::Vector{T}, Xnorm::Vector{T}) =
-        new(m, nulldev, nullb0, λ, autoλ, γ, Xnorm)
+    GammaLassoPath(m, nulldev::T, nullb0::T, λ::Vector{T}, autoλ::Bool, γ::Vector{T}, penalty_factor::Union{Vector,Void}, Xnorm::Vector{T}) =
+        new(m, nulldev, nullb0, λ, autoλ, γ, penalty_factor, Xnorm)
 end
 
-"Compute coefficient specific weights vector ω_j^t based on previous iteration coefficients β"
-function computeω!{T}(ω::Vector{T}, γ::Vector{T}, β::SparseCoefficients{T})
-    # initialize to a vector of ones
-    fill!(ω,one(T))
+"Compute coefficient specific weights vector ω_j^t based on previous iteration coefficients β times penalty_factor"
+function computeω!{T}(ω::Vector{T}, γ::Vector{T}, penalty_factor::Vector{T}, β::SparseCoefficients{T})
+    # initialize to penalty_factor
+    copy!(ω,penalty_factor)
 
     # set weights of non zero betas
     @inbounds @simd for icoef = 1:nnz(β)
         ipred = β.coef2predictor[icoef]
         γi = γ[ipred]
         if γi != 0.0
-            ω[ipred] = 1.0/(1.0+γi*abs(β.coef[icoef]))
+            ω[ipred] /= (1.0+γi*abs(β.coef[icoef]))
         end
     end
 
-    # rescale(ω,p) # not sure if rescaling is the right thing to do here, nothing about it in Taddy (2016)
+    # rescaling is done by penalty_factor, nothing about it in Taddy (2016)
     nothing
 end
-poststep(path::GammaLassoPath, cd::CoordinateDescent, i::Int, coefs::SparseCoefficients) = computeω!(cd.ω, path.γ, coefs)
+poststep(path::GammaLassoPath, cd::CoordinateDescent, i::Int, coefs::SparseCoefficients) = computeω!(cd.ω, path.γ, path.penalty_factor, coefs)
 
 function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{GammaLassoPath},
                                                      X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
@@ -54,7 +55,9 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{GammaLassoPath},
                                                      algorithm::Type=defaultalgorithm(d, l, size(X, 1), size(X, 2)),
                                                      dofit::Bool=true,
                                                      irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
-                                                     maxncoef::Int=min(size(X, 2), 2*size(X, 1)), fitargs...)
+                                                     maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
+                                                     penalty_factor::Union{Vector,Void}=nothing,
+                                                     fitargs...)
 
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
     n = length(y)
@@ -80,8 +83,13 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{GammaLassoPath},
         length(γ)==p || throw(DimensionMismatch("length(γ) != number of parameters ($p)"))
     end
 
-    # Initialize penalty factors to 1 (no rescaling to sum to the number of coefficients)
-    ω = ones(T,p)
+    # Initialize penalty factors to 1 only if not supplied otherwise rescale as in glmnet
+    if isa(penalty_factor, Void)
+        penalty_factor = ones(T,p)
+    else
+        penalty_factor = initpenaltyfactor(convert(Vector{T},penalty_factor),p)
+    end
+    ω = deepcopy(penalty_factor)
 
     # Lasso initialization
     α = convert(T, α)
@@ -95,7 +103,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{GammaLassoPath},
                                             Vector{T}(offset), α, nλ, ω, intercept, irls_tol, dofit)
 
     # Fit path
-    path = GammaLassoPath{typeof(model),T}(model, nulldev, nullb0, λ, autoλ, γ, Xnorm)
+    path = GammaLassoPath{typeof(model),T}(model, nulldev, nullb0, λ, autoλ, γ, penalty_factor, Xnorm)
     if dofit
         fit!(path; irls_tol=irls_tol, fitargs...)
     end

@@ -197,12 +197,12 @@ const MAX_DEV_FRAC = 0.999
 # Compute automatic λ values based on X'y and λminratio
 function computeλ(Xy, λminratio, α, nλ, ω::Union{Vector,Void})
     λmax = abs(Xy[1])
-    if !isa(ω, Void)
+    if !isa(ω, Void) && ω[1] > 0
         λmax /= ω[1]
     end
     for i = 2:length(Xy)
         x = abs(Xy[i])
-        if !isa(ω, Void)
+        if !isa(ω, Void) && ω[i] > 0
             x /= ω[i]
         end
         if x > λmax
@@ -279,6 +279,10 @@ end
 defaultalgorithm(d::Normal, l::IdentityLink, n::Int, p::Int) = p > 5n ? NaiveCoordinateDescent : CovarianceCoordinateDescent
 defaultalgorithm(d::UnivariateDistribution, l::Link, n::Int, p::Int) = NaiveCoordinateDescent
 
+# following glmnet rescale penalty factors to sum to the number of coefficients
+initpenaltyfactor(penalty_factor::Void,p::Int) = nothing
+initpenaltyfactor(penalty_factor::Vector,p::Int) = rescale(penalty_factor, p)
+
 function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
                                                      X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
                                                      l::Link=canonicallink(d);
@@ -301,9 +305,9 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
     # Standardize predictors if requested
     if standardize
         Xnorm = vec(full(std(X, 1, corrected=false)))
-        if any(x -> x == zero(T), Xnorm) 
-            warn("""One of the predicators (columns of X) is a constant, so it can not be standardized. 
-                  To include a constant predicator set standardize = false and intercept = false""") 
+        if any(x -> x == zero(T), Xnorm)
+            warn("""One of the predicators (columns of X) is a constant, so it can not be standardized.
+                  To include a constant predicator set standardize = false and intercept = false""")
         end
         for i = 1:length(Xnorm)
             @inbounds Xnorm[i] = 1/Xnorm[i]
@@ -319,11 +323,7 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
     coefitr = randomize ? RandomCoefficientIterator() : (1:0)
 
     # penalty_factor (ω) defaults to a vector of ones
-    ω = penalty_factor
-    if !isa(ω, Void)
-        # following glmnet rescale penalty factors to sum to the number of coefficients
-        ω = rescale(ω, size(X, 2))
-    end
+    ω = initpenaltyfactor(penalty_factor,size(X, 2))
 
     cd = algorithm{T,intercept,typeof(X),typeof(coefitr),typeof(ω)}(X, α, maxncoef, 1e-7, coefitr, ω)
 
