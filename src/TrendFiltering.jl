@@ -1,5 +1,5 @@
 module TrendFiltering
-using StatsBase, ..FusedLassoMod, ..Util
+using StatsBase, ..FusedLassoMod, ..Util, Compat
 import Base: +, -, *
 export TrendFilter
 
@@ -8,13 +8,13 @@ export TrendFilter
 # Preprint arXiv:1406.2082. Retrieved from
 # http://arxiv.org/abs/1406.2082
 
-immutable DifferenceMatrix{T} <: AbstractMatrix{T}
+struct DifferenceMatrix{T} <: AbstractMatrix{T}
     k::Int
     n::Int
     b::Vector{T}                  # Coefficients for A_mul_B!
     si::Vector{T}                 # State for A_mul_B!/At_mul_B!
 
-    function DifferenceMatrix(k, n)
+    function DifferenceMatrix{T}(k, n) where {T}
         n >= 2*k+2 || throw(ArgumentError("signal must have length >= 2*order+2"))
         b = T[ifelse(isodd(i), -1, 1)*binomial(k+1, i) for i = 0:k+1]
         new(k, n, b, zeros(T, k+1))
@@ -93,9 +93,9 @@ function computeDtD(c, n)
         end
     end
     filt!(sides, c, [one(eltype(c))], sides)
-    colptr = Array(Int, n+1)
-    rowval = Array(Int, (k+2)*(n-k-1)+(k+1)*n)
-    nzval = Array(Float64, (k+2)*(n-k-1)+(k+1)*n)
+    colptr = Array{Int}(n+1)
+    rowval = Array{Int}((k+2)*(n-k-1)+(k+1)*n)
+    nzval = Array{Float64}((k+2)*(n-k-1)+(k+1)*n)
     idx = 1
     for i = 1:k+1
         colptr[i] = idx
@@ -186,7 +186,7 @@ function StatsBase.fit!{T}(tf::TrendFilter{T}, y::AbstractVector{T}, λ::Real; n
         # Check for convergence
         A_mul_B!(Dkp1β, Dkp1, β)
         oldobj = obj
-        obj = sumsqdiff(y, β)/2 + λ*sumabs(Dkp1β)
+        obj = sumsqdiff(y, β)/2 + λ*sum(abs,Dkp1β)
         abs(oldobj - obj) < abs(obj * tol) && break
 
         # Eq. 12 (update α)

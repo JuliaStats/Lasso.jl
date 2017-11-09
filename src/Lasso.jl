@@ -23,12 +23,12 @@ export RegularizationPath, LassoPath, GammaLassoPath, NaiveCoordinateDescent,
 
 ## HELPERS FOR SPARSE COEFFICIENTS
 
-immutable SparseCoefficients{T} <: AbstractVector{T}
+struct SparseCoefficients{T} <: AbstractVector{T}
     coef::Vector{T}              # Individual coefficient values
     coef2predictor::Vector{Int}  # Mapping from indices in coef to indices in original X
     predictor2coef::Vector{Int}  # Mapping from indices in original X to indices in coef
 
-    SparseCoefficients(n::Int) = new(T[], Int[], zeros(Int, n))
+    SparseCoefficients{T}(n::Int) where {T} = new(T[], Int[], zeros(Int, n))
 end
 
 function Base.A_mul_B!{T}(out::Vector, X::Matrix, coef::SparseCoefficients{T})
@@ -120,7 +120,7 @@ function addcoefs!(coefs::SparseMatrixCSC, newcoef::SparseCoefficients, i::Int)
 end
 
 ## COEFFICIENT ITERATION IN SEQUENTIAL OR RANDOM ORDER
-immutable RandomCoefficientIterator
+struct RandomCoefficientIterator
     rng::MersenneTwister
     rg::Base.Random.RangeGeneratorInt{Int,UInt}
     coeforder::Vector{Int}
@@ -129,7 +129,7 @@ const RANDOMIZE_DEFAULT = true
 
 RandomCoefficientIterator() =
     RandomCoefficientIterator(MersenneTwister(1337), Base.Random.RangeGenerator(1:2), Int[])
-typealias CoefficientIterator Union{UnitRange{Int},RandomCoefficientIterator}
+const CoefficientIterator = Union{UnitRange{Int},RandomCoefficientIterator}
 
 # Iterate over coefficients in random order
 function Base.start(x::RandomCoefficientIterator)
@@ -151,10 +151,10 @@ function addcoef(x::RandomCoefficientIterator, icoef::Int)
 end
 addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
 
-abstract RegularizationPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: RegressionModel
+abstract type RegularizationPath{S<:Union{LinearModel,GeneralizedLinearModel},T}<:RegressionModel end
 ## LASSO PATH
 
-type LassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: RegularizationPath{S,T}
+mutable struct LassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: RegularizationPath{S,T}
     m::S
     nulldev::T                    # null deviance
     nullb0::T                     # intercept of null model, if one was fit
@@ -166,7 +166,7 @@ type LassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: Regularization
     b0::Vector{T}                 # model intercepts
     niter::Int                    # number of coordinate descent iterations
 
-    LassoPath(m, nulldev::T, nullb0::T, λ::Vector{T}, autoλ::Bool, Xnorm::Vector{T}) =
+    LassoPath{S,T}(m, nulldev::T, nullb0::T, λ::Vector{T}, autoλ::Bool, Xnorm::Vector{T}) where {S,T} =
         new(m, nulldev, nullb0, λ, autoλ, Xnorm)
 end
 
@@ -232,7 +232,7 @@ function build_model{T}(X::AbstractMatrix{T}, y::FPVector, d::Normal, l::Identit
     if λ == nothing
         # Find max λ
         if intercept
-            muscratch = Array(T, length(mu))
+            muscratch = Array{T}(length(mu))
             @simd for i = 1:length(mu)
                 @inbounds muscratch[i] = (mu[i] - nullb0)*wts[i]
             end
@@ -453,7 +453,7 @@ GLM.linkfun{M<:LinearModel}(path::RegularizationPath{M}) = IdentityLink()
 GLM.linkfun{V<:FPVector,D<:UnivariateDistribution,L<:Link,L2<:GLM.LinPred}(path::RegularizationPath{GeneralizedLinearModel{GlmResp{V,D,L},L2}}) = L()
 
 ## Prediction function for GLMs
-function StatsBase.predict{T<:AbstractFloat}(path::RegularizationPath, newX::AbstractMatrix{T}; offset::FPVector=Array(T,0), select=:all)
+function StatsBase.predict{T<:AbstractFloat}(path::RegularizationPath, newX::AbstractMatrix{T}; offset::FPVector=Array{T}(0), select=:all)
     # add an interecept to newX if the model has one
     if hasintercept(path)
         newX = [ones(eltype(newX),size(newX,1),1) newX]
@@ -495,7 +495,7 @@ deviance at each segement of the path for (potentially new) data X and y
 select=:all or :AICc like in coef()
 """
 function StatsBase.deviance{T<:AbstractFloat,V<:FPVector}(path::RegularizationPath, X::AbstractMatrix{T}, y::V;
-                    offset::FPVector=Array(T,0), select=:all,
+                    offset::FPVector=Array{T}(0), select=:all,
                     wts::FPVector=ones(T, length(y)))
     μ = predict(path, X; offset=offset, select=select)
     deviance(path, y, μ, wts)

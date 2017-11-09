@@ -122,11 +122,11 @@ facts("LassoPath") do
                                                                                         cd_tol=cd_tol, irls_tol=irls_tol, criterion=criterion, randomize=randomize,
                                                                                         α=alpha, offset=offset, penalty_factor=penalty_factor)
                                                                                 rd = (l.coefs - gbeta)./gbeta
-                                                                                rd[!isfinite(rd)] = 0
-                                                                                println("         coefs adiff = $(maxabs(l.coefs - gbeta)) rdiff = $(maxabs(rd))")
+                                                                                rd[.!isfinite.(rd)] = 0
+                                                                                println("         coefs adiff = $(maximum(abs,l.coefs - gbeta)) rdiff = $(maximum(abs,rd))")
                                                                                 rd = (l.b0 - g.a0)./g.a0
-                                                                                rd[!isfinite(rd)] = 0
-                                                                                println("         b0    adiff = $(maxabs(l.b0 - g.a0)) rdiff = $(maxabs(rd))")
+                                                                                rd[.!isfinite.(rd)] = 0
+                                                                                println("         b0    adiff = $(maximum(abs,l.b0 - g.a0)) rdiff = $(maximum(abs,rd))")
                                                                                 if criterion==:obj
                                                                                     # nothing to compare results against at this point, we just make sure the code runs
                                                                                 else
@@ -245,10 +245,10 @@ end
 #                                                                                         α=alpha, offset=offset)#, penalty_factor=penalty_factor)
 #                                                                                 rd = (l.coefs - gbeta)./gbeta
 #                                                                                 rd[!isfinite(rd)] = 0
-#                                                                                 # println("         coefs adiff = $(maxabs(l.coefs - gbeta)) rdiff = $(maxabs(rd))")
+#                                                                                 # println("         coefs adiff = $(maximum(abs,l.coefs - gbeta)) rdiff = $(maximum(abs,rd))")
 #                                                                                 rd = (l.b0 - g.a0)./g.a0
 #                                                                                 rd[!isfinite(rd)] = 0
-#                                                                                 # println("         b0    adiff = $(maxabs(l.b0 - g.a0)) rdiff = $(maxabs(rd))")
+#                                                                                 # println("         b0    adiff = $(maximum(abs,l.b0 - g.a0)) rdiff = $(maximum(abs,rd))")
 #                                                                                 if criterion==:obj
 #                                                                                     # nothing to compare results against at this point, we just make sure the code runs
 #                                                                                 else

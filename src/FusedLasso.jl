@@ -1,5 +1,5 @@
 module FusedLassoMod
-using StatsBase
+using StatsBase, Compat
 import Base: +, -, *
 export FusedLasso
 
@@ -8,12 +8,12 @@ export FusedLasso
 # L0-Segmentation. Journal of Computational and Graphical Statistics,
 # 22(2), 246–260. doi:10.1080/10618600.2012.681238
 
-immutable NormalCoefs{T}
+struct NormalCoefs{T}
     lin::T
     quad::T
 
-    NormalCoefs(lin::Real) = new(lin, 0)
-    NormalCoefs(lin::Real, quad::Real) = new(lin, quad)
+    NormalCoefs{T}(lin::Real) where {T} = new(lin, 0)
+    NormalCoefs{T}(lin::Real, quad::Real) where {T} = new(lin, quad)
 end
 +{T}(a::NormalCoefs{T}, b::NormalCoefs{T}) = NormalCoefs{T}(a.lin+b.lin, a.quad+b.quad)
 -{T}(a::NormalCoefs{T}, b::NormalCoefs{T}) = NormalCoefs{T}(a.lin-b.lin, a.quad-b.quad)
@@ -29,13 +29,13 @@ solveforbtilde{T}(a::NormalCoefs{T}, lhs::Real) = (lhs - a.lin)/(2 * a.quad)
 btilde_lt{T}(a::NormalCoefs{T}, lhs::Real, x::Real) = lhs - a.lin > 2 * a.quad * x
 btilde_gt{T}(a::NormalCoefs{T}, lhs::Real, x::Real) = lhs - a.lin < 2 * a.quad * x
 
-immutable Knot{T,S}
+struct Knot{T,S}
     pos::T
     coefs::S
     sign::Int8
 end
 
-immutable FusedLasso{T,S} <: RegressionModel
+struct FusedLasso{T,S} <: RegressionModel
     β::Vector{T}              # Coefficients
     knots::Vector{Knot{T,S}}  # Active knots
     bp::Matrix{T}             # Backpointers
@@ -43,7 +43,7 @@ end
 
 function StatsBase.fit{T}(::Type{FusedLasso}, y::AbstractVector{T}, λ::Real; dofit::Bool=true)
     S = NormalCoefs{T}
-    flsa = FusedLasso{T,S}(Array(T, length(y)), Array(Knot{T,S}, 2), Array(T, 2, length(y)-1))
+    flsa = FusedLasso{T,S}(Array{T}(length(y)), Array{Knot{T,S}}(2), Array{T}(2, length(y)-1))
     dofit && fit!(flsa, y, λ)
     flsa
 end

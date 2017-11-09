@@ -18,8 +18,8 @@ function P{T}(α::T, β::SparseCoefficients{T}, ω::Vector{T})
     x
 end
 
-abstract CoordinateDescent{T,Intercept,M<:AbstractMatrix} <: LinPred
-type NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator,W<:Union{Vector,Void}} <: CoordinateDescent{T,Intercept,M}
+abstract type CoordinateDescent{T,Intercept,M<:AbstractMatrix} <: LinPred end
+mutable struct NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator,W<:Union{Vector,Void}} <: CoordinateDescent{T,Intercept,M}
     X::M                          # original design matrix
     μy::T                         # mean of y at current weights
     μX::Vector{T}                 # mean of X at current weights (in predictor order)
@@ -37,9 +37,9 @@ type NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator
     tol::T                        # tolerance
     ω::W                          # coefficient-specific penalty weights
 
-    NaiveCoordinateDescent(X::M, α::Real, maxncoef::Int, tol::Real, coefitr::S, ω::Union{Vector{T},Void}) =
-        new(X, zero(T), zeros(T, size(X, 2)), zeros(T, maxncoef), Array(T, size(X, 1)), zero(T),
-            Array(T, size(X, 1)), Array(T, size(X, 1)), convert(T, NaN), coefitr, convert(T, NaN),
+    NaiveCoordinateDescent{T,Intercept,M,S,W}(X::M, α::Real, maxncoef::Int, tol::Real, coefitr::S, ω::Union{Vector{T},Void}) where {T,Intercept,M,S,W} =
+        new(X, zero(T), zeros(T, size(X, 2)), zeros(T, maxncoef), Array{T}(size(X, 1)), zero(T),
+            Array{T}(size(X, 1)), Array{T}(size(X, 1)), convert(T, NaN), coefitr, convert(T, NaN),
             α, typemax(Int), maxncoef, tol, ω)
 end
 
@@ -297,7 +297,7 @@ function linpred!{T}(mu::Vector{T}, cd::NaiveCoordinateDescent{T}, coef::SparseC
     mu
 end
 
-type CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator,W<:Union{Vector,Void}} <: CoordinateDescent{T,Intercept,M}
+mutable struct CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator,W<:Union{Vector,Void}} <: CoordinateDescent{T,Intercept,M}
     X::M                          # original design matrix
     μy::T                         # mean of y at current weights
     μX::Vector{T}                 # mean of X at current weights
@@ -316,10 +316,10 @@ type CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIte
     tol::T                        # tolerance
     ω::W                          # coefficient-specific penalty weights
 
-    function CovarianceCoordinateDescent(X::M, α::Real, maxncoef::Int, tol::Real, coefiter::S, ω::Union{Vector{T},Void})
-        new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Array(T, size(X, 2)),
-            Array(T, size(X, 2)), Array(T, maxncoef, size(X, 2)), Array(T, size(X, 1)),
-            Array(T, size(X, 1)), convert(T, NaN), coefiter, convert(T, NaN), α,
+    function CovarianceCoordinateDescent{T,Intercept,M,S,W}(X::M, α::Real, maxncoef::Int, tol::Real, coefiter::S, ω::Union{Vector{T},Void}) where {T,Intercept,M,S,W}
+        new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Array{T}(size(X, 2)),
+            Array{T}(size(X, 2)), Array{T}(maxncoef, size(X, 2)), Array{T}(size(X, 1)),
+            Array{T}(size(X, 1)), convert(T, NaN), coefiter, convert(T, NaN), α,
             typemax(Int), maxncoef, tol, ω)
     end
 end
@@ -667,7 +667,7 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::RegularizationPath{S,
     dev_ratio = convert(T, NaN)
     dev = convert(T, NaN)
     b0 = zero(T)
-    scratchmu = Array(T, size(X, 1))
+    scratchmu = Array{T}(size(X, 1))
     objold = convert(T, Inf)
 
     if autoλ
