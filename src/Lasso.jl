@@ -420,7 +420,11 @@ function StatsBase.coef(path::RegularizationPath; select=:all, nCVfolds=10)
     if !isdefined(path,:coefs)
         X = path.m.pp.X
         p,nλ = size(path)
-        return zeros(eltype(X),p,nλ)
+        if select == :all
+            return zeros(eltype(X),p,nλ)
+        else
+            return zeros(eltype(X),p)
+        end
     end
 
     if select == :all
