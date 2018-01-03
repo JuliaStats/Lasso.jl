@@ -5,7 +5,7 @@
 
 ## GAMMA LASSO PATH
 
-type GammaLassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: RegularizationPath{S,T}
+mutable struct GammaLassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: RegularizationPath{S,T}
     m::S
     nulldev::T                    # null deviance
     nullb0::T                     # intercept of null model, if one was fit
@@ -18,7 +18,7 @@ type GammaLassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: Regulariz
     b0::Vector{T}                 # model intercepts
     niter::Int                    # number of coordinate descent iterations
 
-    GammaLassoPath(m, nulldev::T, nullb0::T, λ::Vector{T}, autoλ::Bool, γ::Vector{T}, Xnorm::Vector{T}) =
+    GammaLassoPath{S,T}(m, nulldev::T, nullb0::T, λ::Vector{T}, autoλ::Bool, γ::Vector{T}, Xnorm::Vector{T}) where {S,T} =
         new(m, nulldev, nullb0, λ, autoλ, γ, Xnorm)
 end
 

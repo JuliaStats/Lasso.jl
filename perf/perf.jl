@@ -15,14 +15,14 @@ function makeXY(ρ, nsamples, nfeatures)
     (X, y)
 end
 
-type GLMNetOp{Dist,Naive} end
+mutable struct GLMNetOp{Dist,Naive} end
 calc{Dist,Naive}(::GLMNetOp{Dist,Naive}, X, y) = glmnet(X, y, Dist(), naivealgorithm=Naive)
 calc(::GLMNetOp{Binomial}, X, y) = glmnet(X, y, Binomial())
 
-type LassoOp{Dist,Naive} end
+mutable struct LassoOp{Dist,Naive} end
 calc{Dist,Naive}(::LassoOp{Dist,Naive}, X, y) = fit(LassoPath, X, y, Dist(), naivealgorithm=Naive, criterion=:coef)
 
-type LassoBenchmark{Op} <: Proc end
+mutable struct LassoBenchmark{Op} <: Proc end
 Base.length(p::LassoBenchmark, n) = 0
 Base.isvalid(p::LassoBenchmark, n) = true
 Base.start(p::LassoBenchmark, n) = (gc(); inputs[n])
