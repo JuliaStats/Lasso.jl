@@ -8,47 +8,47 @@ export FusedLasso
 # L0-Segmentation. Journal of Computational and Graphical Statistics,
 # 22(2), 246–260. doi:10.1080/10618600.2012.681238
 
-immutable NormalCoefs{T}
+struct NormalCoefs{T}
     lin::T
     quad::T
 
-    NormalCoefs(lin::Real) = new(lin, 0)
+    NormalCoefs{T}(lin::S) where {T,S <: Real} = new(T(lin), zero(T))
     NormalCoefs(lin::Real, quad::Real) = new(lin, quad)
 end
-+{T}(a::NormalCoefs{T}, b::NormalCoefs{T}) = NormalCoefs{T}(a.lin+b.lin, a.quad+b.quad)
--{T}(a::NormalCoefs{T}, b::NormalCoefs{T}) = NormalCoefs{T}(a.lin-b.lin, a.quad-b.quad)
-+{T}(a::NormalCoefs{T}, b::Real) = NormalCoefs{T}(a.lin+b, a.quad)
--{T}(a::NormalCoefs{T}, b::Real) = NormalCoefs{T}(a.lin-b, a.quad)
-*{T}(a::Real, b::NormalCoefs{T}) = NormalCoefs{T}(a*b.lin, a*b.quad)
++(a::NormalCoefs{T}, b::NormalCoefs{T}) where {T} = NormalCoefs{T}(a.lin+b.lin, a.quad+b.quad)
+-(a::NormalCoefs{T}, b::NormalCoefs{T}) where {T} = NormalCoefs{T}(a.lin-b.lin, a.quad-b.quad)
++(a::NormalCoefs{T}, b::Real) where {T} = NormalCoefs{T}(a.lin+b, a.quad)
+-(a::NormalCoefs{T}, b::Real) where {T} = NormalCoefs{T}(a.lin-b, a.quad)
+*(a::Real, b::NormalCoefs{T}) where {T} = NormalCoefs{T}(a*b.lin, a*b.quad)
 
 # Implements Algorithm 2 lines 8 and 19
 solveforbtilde{T}(a::NormalCoefs{T}, lhs::Real) = (lhs - a.lin)/(2 * a.quad)
 
 # These are marginally faster than computing btilde explicitly because
 # they avoid division
-btilde_lt{T}(a::NormalCoefs{T}, lhs::Real, x::Real) = lhs - a.lin > 2 * a.quad * x
-btilde_gt{T}(a::NormalCoefs{T}, lhs::Real, x::Real) = lhs - a.lin < 2 * a.quad * x
+btilde_lt(a::NormalCoefs{T}, lhs::Real, x::Real) where {T} = lhs - a.lin > 2 * a.quad * x
+btilde_gt(a::NormalCoefs{T}, lhs::Real, x::Real) where {T} = lhs - a.lin < 2 * a.quad * x
 
-immutable Knot{T,S}
+struct Knot{T,S}
     pos::T
     coefs::S
     sign::Int8
 end
 
-immutable FusedLasso{T,S} <: RegressionModel
+struct FusedLasso{T,S} <: RegressionModel
     β::Vector{T}              # Coefficients
     knots::Vector{Knot{T,S}}  # Active knots
     bp::Matrix{T}             # Backpointers
 end
 
-function StatsBase.fit{T}(::Type{FusedLasso}, y::AbstractVector{T}, λ::Real; dofit::Bool=true)
+function StatsBase.fit(::Type{FusedLasso}, y::AbstractVector{T}, λ::Real; dofit::Bool=true) where T
     S = NormalCoefs{T}
-    flsa = FusedLasso{T,S}(Array(T, length(y)), Array(Knot{T,S}, 2), Array(T, 2, length(y)-1))
+    flsa = FusedLasso{T,S}(Vector{T}(length(y)), Vector{Knot{T,S}}(2), Matrix{T}(2, length(y)-1))
     dofit && fit!(flsa, y, λ)
     flsa
 end
 
-function StatsBase.fit!{T,S}(flsa::FusedLasso{T,S}, y::AbstractVector{T}, λ::Real)
+function StatsBase.fit!(flsa::FusedLasso{T,S}, y::AbstractVector{T}, λ::Real) where {T,S}
     β = flsa.β
     knots = flsa.knots
     bp = flsa.bp

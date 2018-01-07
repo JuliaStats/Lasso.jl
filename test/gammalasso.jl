@@ -1,7 +1,7 @@
 # Comparing with Matt Taddy's gamlr.R
 # To rebuild the test cases source(gammalasso.R)
 using Lasso
-using GLM, FactCheck, DataFrames
+using CSV, GLM, FactCheck, DataFrames
 
 # often path length is different because of different stopping rules...
 function issimilarhead(a::AbstractVector,b::AbstractVector;rtol=1e-4)
@@ -21,15 +21,17 @@ srand(243214)
 facts("GammaLassoPath") do
     for (family, dist, link) in (("gaussian", Normal(), IdentityLink()), ("binomial", Binomial(), LogitLink()), ("poisson", Poisson(), LogLink()))
         context(family) do
-            data = readcsv(joinpath(datapath,"gamlr.$family.data.csv"))
+            data = readcsv(joinpath(datapath,"gamlr.$family.data.csv"), header=false)
             y = convert(Vector{Float64},data[:,1])
             X = convert(Matrix{Float64},data[:,2:end])
             (n,p) = size(X)
             for γ in [0 2 10]
                 fitname = "gamma$γ"
                 # get gamlr.R params and estimates
-                params = readtable(joinpath(datapath,"gamlr.$family.$fitname.params.csv"))
-                fittable = readtable(joinpath(datapath,"gamlr.$family.$fitname.fit.csv"))
+                params = CSV.read(joinpath(datapath,"gamlr.$family.$fitname.params.csv"))
+                names!(params, Symbol.(replace.(string.(names(params)), '.', '_')))  # CSV.read does not convert '.' in column names
+                fittable = CSV.read(joinpath(datapath,"gamlr.$family.$fitname.fit.csv"))
+                names!(fittable, Symbol.(replace.(string.(names(fittable)), '.', '_')))
                 gcoefs = convert(Matrix{Float64},readcsv(joinpath(datapath,"gamlr.$family.$fitname.coefs.csv")))
                 family = params[1,:fit_family]
                 γ=params[1,:fit_gamma]

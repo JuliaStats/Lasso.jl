@@ -18,8 +18,9 @@ function P{T}(α::T, β::SparseCoefficients{T}, ω::Vector{T})
     x
 end
 
-abstract CoordinateDescent{T,Intercept,M<:AbstractMatrix} <: LinPred
-type NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator,W<:Union{Vector,Void}} <: CoordinateDescent{T,Intercept,M}
+abstract type CoordinateDescent{T,Intercept,M<:AbstractMatrix} <: LinPred end
+
+mutable struct NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator,W<:Union{Vector,Void}} <: CoordinateDescent{T,Intercept,M}
     X::M                          # original design matrix
     μy::T                         # mean of y at current weights
     μX::Vector{T}                 # mean of X at current weights (in predictor order)
@@ -37,9 +38,9 @@ type NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator
     tol::T                        # tolerance
     ω::W                          # coefficient-specific penalty weights
 
-    NaiveCoordinateDescent(X::M, α::Real, maxncoef::Int, tol::Real, coefitr::S, ω::Union{Vector{T},Void}) =
-        new(X, zero(T), zeros(T, size(X, 2)), zeros(T, maxncoef), Array(T, size(X, 1)), zero(T),
-            Array(T, size(X, 1)), Array(T, size(X, 1)), convert(T, NaN), coefitr, convert(T, NaN),
+    NaiveCoordinateDescent{T,Intercept,M,S,W}(X::M, α::Real, maxncoef::Int, tol::Real, coefitr::S, ω::Union{Vector{T},Void}) where {T,Intercept,M,S,W} =
+        new(X, zero(T), zeros(T, size(X, 2)), zeros(T, maxncoef), Vector{T}(size(X, 1)), zero(T),
+            Vector{T}(size(X, 1)), Vector{T}(size(X, 1)), convert(T, NaN), coefitr, convert(T, NaN),
             α, typemax(Int), maxncoef, tol, ω)
 end
 
@@ -82,7 +83,7 @@ function computeXssq{T,Intercept}(cd::NaiveCoordinateDescent{T,Intercept}, ipred
     ssq
 end
 
-function computeXssq{T,Intercept,M<:SparseMatrixCSC}(cd::NaiveCoordinateDescent{T,Intercept,M}, ipred::Int)
+function computeXssq(cd::NaiveCoordinateDescent{T,Intercept,M}, ipred::Int) where {T,Intercept,M<:SparseMatrixCSC}
     @extractfields cd X weights
     @extractfields X rowval nzval colptr
     μ = Intercept ? cd.μX[ipred] : zero(T)
@@ -98,8 +99,8 @@ end
 
 # Updates CoordinateDescent object with (possibly) new y vector and
 # weights
-function update!{T,Intercept}(cd::NaiveCoordinateDescent{T,Intercept}, coef::SparseCoefficients{T},
-                              y::Vector{T}, wt::Vector{T})
+function update!(cd::NaiveCoordinateDescent{T,Intercept}, coef::SparseCoefficients{T},
+                              y::Vector{T}, wt::Vector{T}) where {T,Intercept}
     @extractfields cd residuals X Xssq weights oldy
     copy!(weights, wt)
     weightsum = cd.weightsum = sum(weights)
@@ -148,8 +149,8 @@ end
 # changed coefficient is non-zero instead of updating all of them. In
 # the dense case, we need to update all coefficients anyway, so this
 # strategy is unneeded.
-residualoffset{T}(cd::NaiveCoordinateDescent{T}) = zero(T)
-residualoffset{T,M<:SparseMatrixCSC}(cd::NaiveCoordinateDescent{T,true,M}) = cd.residualoffset
+residualoffset(cd::NaiveCoordinateDescent{T}) where {T} = zero(T)
+residualoffset(cd::NaiveCoordinateDescent{T,true,M}) where {T,M<:SparseMatrixCSC} = cd.residualoffset
 
 # Compute the gradient term (first term of RHS of eq. 8)
 @inline function compute_grad{T}(::NaiveCoordinateDescent{T}, X::AbstractMatrix{T},
@@ -297,7 +298,7 @@ function linpred!{T}(mu::Vector{T}, cd::NaiveCoordinateDescent{T}, coef::SparseC
     mu
 end
 
-type CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator,W<:Union{Vector,Void}} <: CoordinateDescent{T,Intercept,M}
+mutable struct CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator,W<:Union{Vector,Void}} <: CoordinateDescent{T,Intercept,M}
     X::M                          # original design matrix
     μy::T                         # mean of y at current weights
     μX::Vector{T}                 # mean of X at current weights
@@ -316,10 +317,10 @@ type CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIte
     tol::T                        # tolerance
     ω::W                          # coefficient-specific penalty weights
 
-    function CovarianceCoordinateDescent(X::M, α::Real, maxncoef::Int, tol::Real, coefiter::S, ω::Union{Vector{T},Void})
-        new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Array(T, size(X, 2)),
-            Array(T, size(X, 2)), Array(T, maxncoef, size(X, 2)), Array(T, size(X, 1)),
-            Array(T, size(X, 1)), convert(T, NaN), coefiter, convert(T, NaN), α,
+    function CovarianceCoordinateDescent{T,Intercept,M,S,W}(X::M, α::Real, maxncoef::Int, tol::Real, coefiter::S, ω::Union{Vector{T},Void}) where {T,Intercept,M,S,W}
+        new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Vector{T}(size(X, 2)),
+            Vector{T}(size(X, 2)), Matrix{T}(maxncoef, size(X, 2)), Vector{T}(size(X, 1)),
+            Vector{T}(size(X, 1)), convert(T, NaN), coefiter, convert(T, NaN), α,
             typemax(Int), maxncoef, tol, ω)
     end
 end
@@ -667,7 +668,7 @@ function StatsBase.fit!{S<:GeneralizedLinearModel,T}(path::RegularizationPath{S,
     dev_ratio = convert(T, NaN)
     dev = convert(T, NaN)
     b0 = zero(T)
-    scratchmu = Array(T, size(X, 1))
+    scratchmu = Vector{T}(size(X, 1))
     objold = convert(T, Inf)
 
     if autoλ

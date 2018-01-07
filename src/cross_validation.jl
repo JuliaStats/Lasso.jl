@@ -42,7 +42,7 @@ function cross_validate_path{T<:AbstractFloat,V<:FPVector}(path::RegularizationP
                                                      X::AbstractMatrix{T}, y::V;        # potentially new data
                                                      gen=Kfold(length(y),10),           # folds generator (see MLBase)
                                                      select=:CVmin,                     # :CVmin or :CV1se
-                                                     offset::FPVector=Array(T,0),
+                                                     offset::FPVector=T[],
                                                      fitargs...)
     @extractfields path m λ
     n,p = size(X)
