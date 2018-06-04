@@ -1,7 +1,7 @@
 # Comparing with Matt Taddy's gamlr.R
 # To rebuild the test cases source(gammalasso.R)
 using Lasso
-using GLM, FactCheck, DataFrames
+using CSV, GLM, FactCheck, DataFrames
 
 # often path length is different because of different stopping rules...
 function issimilarhead(a::AbstractVector,b::AbstractVector;rtol=1e-4)
@@ -23,7 +23,7 @@ srand(243214)
 facts("GammaLassoPath") do
     for (family, dist, link) in (("gaussian", Normal(), IdentityLink()), ("binomial", Binomial(), LogitLink()), ("poisson", Poisson(), LogLink()))
         context(family) do
-            data = readcsv(joinpath(datapath,"gamlr.$family.data.csv"))
+            data = readcsv(joinpath(datapath,"gamlr.$family.data.csv"), header=false)
             y = convert(Vector{Float64},data[:,1])
             X = convert(Matrix{Float64},data[:,2:end])
             (n,p) = size(X)

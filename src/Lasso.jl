@@ -129,6 +129,7 @@ const RANDOMIZE_DEFAULT = true
 
 RandomCoefficientIterator() =
     RandomCoefficientIterator(MersenneTwister(1337), Base.Random.RangeGenerator(1:2), Int[])
+
 const CoefficientIterator = Union{UnitRange{Int},RandomCoefficientIterator}
 
 # Iterate over coefficients in random order
@@ -151,7 +152,7 @@ function addcoef(x::RandomCoefficientIterator, icoef::Int)
 end
 addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
 
-abstract type RegularizationPath{S<:Union{LinearModel,GeneralizedLinearModel},T}<:RegressionModel end
+abstract type RegularizationPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: RegressionModel end
 ## LASSO PATH
 
 mutable struct LassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: RegularizationPath{S,T}
@@ -232,7 +233,7 @@ function build_model{T}(X::AbstractMatrix{T}, y::FPVector, d::Normal, l::Identit
     if λ == nothing
         # Find max λ
         if intercept
-            muscratch = Array{T}(length(mu))
+            muscratch = Vector{T}(length(mu))
             @simd for i = 1:length(mu)
                 @inbounds muscratch[i] = (mu[i] - nullb0)*wts[i]
             end
@@ -457,7 +458,7 @@ GLM.linkfun{M<:LinearModel}(path::RegularizationPath{M}) = IdentityLink()
 GLM.linkfun{V<:FPVector,D<:UnivariateDistribution,L<:Link,L2<:GLM.LinPred}(path::RegularizationPath{GeneralizedLinearModel{GlmResp{V,D,L},L2}}) = L()
 
 ## Prediction function for GLMs
-function StatsBase.predict{T<:AbstractFloat}(path::RegularizationPath, newX::AbstractMatrix{T}; offset::FPVector=Array{T}(0), select=:all)
+function StatsBase.predict(path::RegularizationPath, newX::AbstractMatrix{T}; offset::FPVector=T[], select=:all) where {T<:AbstractFloat}
     # add an interecept to newX if the model has one
     if hasintercept(path)
         newX = [ones(eltype(newX),size(newX,1),1) newX]
@@ -499,7 +500,7 @@ deviance at each segement of the path for (potentially new) data X and y
 select=:all or :AICc like in coef()
 """
 function StatsBase.deviance{T<:AbstractFloat,V<:FPVector}(path::RegularizationPath, X::AbstractMatrix{T}, y::V;
-                    offset::FPVector=Array{T}(0), select=:all,
+                    offset::FPVector=T[], select=:all,
                     wts::FPVector=ones(T, length(y)))
     μ = predict(path, X; offset=offset, select=select)
     deviance(path, y, μ, wts)
