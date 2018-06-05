@@ -270,8 +270,7 @@ function build_model{T}(X::AbstractMatrix{T}, y::FPVector, d::UnivariateDistribu
         λ = convert(Vector{T}, λ)
     end
 
-    eta = GLM.initialeta!(d, l, similar(y), y, wts, offset)
-    rr = GlmResp(y, d, l, eta, similar(eta), offset, wts)
+    rr = GlmResp(y, d, l, offset, wts)
     model = GeneralizedLinearModel(rr, lp, false)
 
     (model, nulldev, nullb0, λ)

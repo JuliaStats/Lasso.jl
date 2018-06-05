@@ -45,35 +45,35 @@ facts("GammaLassoPath") do
                     for γ in [0 2 10]
                         fitname = "gamma$γ.pf$pf"
                         # get gamlr.R params and estimates
-                        params = readtable(joinpath(datapath,"gamlr.$family.$fitname.params.csv"))
-                        fittable = readtable(joinpath(datapath,"gamlr.$family.$fitname.fit.csv"))
+                        params = CSV.read(joinpath(datapath,"gamlr.$family.$fitname.params.csv"))
+                        fittable = CSV.read(joinpath(datapath,"gamlr.$family.$fitname.fit.csv"))
                         gcoefs = convert(Matrix{Float64},readcsv(joinpath(datapath,"gamlr.$family.$fitname.coefs.csv")))
-                        family = params[1,:fit_family]
-                        γ=params[1,:fit_gamma]
-                        λ = nothing #convert(Vector{Float64},fittable[:fit_lambda]) # should be set to nothing evenatually
+                        family = params[1,Symbol("fit.family")]
+                        γ=params[1,Symbol("fit.gamma")]
+                        λ = nothing #convert(Vector{Float64},fittable[Symbol("fit.lambda")]) # should be set to nothing evenatually
                         context("γ=$γ") do
 
                             # fit julia version
                             glp = fit(GammaLassoPath, X, y, dist, link; γ=γ, λminratio=0.001, penalty_factor=penalty_factor, λ=λ)
 
                             # compare
-                            @fact issimilarhead(glp.λ,fittable[:fit_lambda];rtol=rtol) --> true
-                            @fact issimilarhead(glp.b0,fittable[:fit_alpha];rtol=rtol) --> true
+                            @fact issimilarhead(glp.λ,fittable[Symbol("fit.lambda")];rtol=rtol) --> true
+                            @fact issimilarhead(glp.b0,fittable[Symbol("fit.alpha")];rtol=rtol) --> true
                             @fact issimilarhead(full(glp.coefs'),gcoefs';rtol=rtol) --> true
                             # we follow GLM.jl convention where deviance is scaled by nobs, while in gamlr it is not
-                            @fact issimilarhead(deviance(glp),fittable[:fit_deviance]/nobs(glp);rtol=rtol) --> true
-                            @fact issimilarhead(deviance(glp,X,y),fittable[:fit_deviance]/nobs(glp);rtol=rtol) --> true
-                            # @fact issimilarhead(round(df(glp)[2:end]),round(fittable[2:end,:fit_df])) --> true
-                            @fact issimilarhead(loglikelihood(glp),fittable[:fit_logLik];rtol=rtol) --> true
-                            @fact issimilarhead(aicc(glp),fittable[:fit_AICc];rtol=rtol) --> true
+                            @fact issimilarhead(deviance(glp),fittable[Symbol("fit.deviance")]/nobs(glp);rtol=rtol) --> true
+                            @fact issimilarhead(deviance(glp,X,y),fittable[Symbol("fit.deviance")]/nobs(glp);rtol=rtol) --> true
+                            # @fact issimilarhead(round(df(glp)[2:end]),round(fittable[2:end,Symbol("fit.df")])) --> true
+                            @fact issimilarhead(loglikelihood(glp),fittable[Symbol("fit.logLik")];rtol=rtol) --> true
+                            @fact issimilarhead(aicc(glp),fittable[Symbol("fit.AICc")];rtol=rtol) --> true
 
                             # TODO: figure out why these are so off, maybe because most are corner solutions
                             # and stopping rules for lambda are different
                             # # what we really need all these stats for is that the AICc identifies the same minima:
-                            # if indmin(aicc(glp)) != endof(aicc(glp)) && indmin(fittable[:fit_AICc]) != endof(fittable[:fit_AICc])
+                            # if indmin(aicc(glp)) != endof(aicc(glp)) && indmin(fittable[Symbol("fit.AICc")]) != endof(fittable[Symbol("fit.AICc")])
                             #     # interior minima
                             #     println("comparing intereior AICc")
-                            #     @fact indmin(aicc(glp)) --> indmin(fittable[:fit_AICc])
+                            #     @fact indmin(aicc(glp)) --> indmin(fittable[Symbol("fit.AICc")])
                             # end
 
                             # comparse CV, NOTE: this involves a random choice of train subsamples
