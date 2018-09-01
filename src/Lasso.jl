@@ -31,7 +31,7 @@ struct SparseCoefficients{T} <: AbstractVector{T}
     SparseCoefficients{T}(n::Int) where {T} = new(T[], Int[], zeros(Int, n))
 end
 
-function Base.A_mul_B!{T}(out::Vector, X::Matrix, coef::SparseCoefficients{T})
+function Base.A_mul_B!(out::Vector, X::Matrix, coef::SparseCoefficients{T}) where T
     fill!(out, zero(eltype(out)))
     @inbounds for icoef = 1:nnz(coef)
         ipred = coef.coef2predictor[icoef]
@@ -43,7 +43,7 @@ function Base.A_mul_B!{T}(out::Vector, X::Matrix, coef::SparseCoefficients{T})
     out
 end
 
-function Base.A_mul_B!{T}(out::Vector, X::SparseMatrixCSC, coef::SparseCoefficients{T})
+function Base.A_mul_B!(out::Vector, X::SparseMatrixCSC, coef::SparseCoefficients{T}) where T
     @extractfields X colptr rowval nzval
     fill!(out, zero(eltype(out)))
     @inbounds for icoef = 1:nnz(coef)
@@ -56,7 +56,7 @@ function Base.A_mul_B!{T}(out::Vector, X::SparseMatrixCSC, coef::SparseCoefficie
     out
 end
 
-function Base.dot{T}(x::Vector{T}, coef::SparseCoefficients{T})
+function Base.dot(x::Vector{T}, coef::SparseCoefficients{T}) where T
     v = 0.0
     @inbounds @simd for icoef = 1:nnz(coef)
         v += x[coef.coef2predictor[icoef]]*coef.coef[icoef]
@@ -66,10 +66,10 @@ end
 
 Base.size(x::SparseCoefficients) = (length(x.predictor2coef),)
 Base.nnz(x::SparseCoefficients) = length(x.coef)
-Base.getindex{T}(x::SparseCoefficients{T}, ipred::Int) =
+Base.getindex(x::SparseCoefficients{T}, ipred::Int) where {T} =
     x.predictor2coef[ipred] == 0 ? zero(T) : x.coef[x.predictor2coef[ipred]]
 
-function Base.setindex!{T}(A::Matrix{T}, coef::SparseCoefficients, rg::UnitRange{Int}, i::Int)
+function Base.setindex!(A::Matrix{T}, coef::SparseCoefficients, rg::UnitRange{Int}, i::Int) where T
     A[:, i] = zero(T)
     for icoef = 1:nnz(coef)
         A[rg[coef.coef2predictor[icoef]], i] = coef.coef[icoef]
@@ -89,7 +89,7 @@ function Base.copy!(x::SparseCoefficients, y::SparseCoefficients)
 end
 
 # Add a new coefficient to x, returning its index in x.coef
-function addcoef!{T}(x::SparseCoefficients{T}, ipred::Int)
+function addcoef!(x::SparseCoefficients{T}, ipred::Int) where T
     push!(x.coef, zero(T))
     push!(x.coef2predictor, ipred)
     coefindex = nnz(x)
@@ -218,10 +218,10 @@ end
 # rescales A so that it sums to base
 rescale(A, base) = A * (base / sum(A))
 
-function build_model{T}(X::AbstractMatrix{T}, y::FPVector, d::Normal, l::IdentityLink,
-                        lp::LinPred, λminratio::Real, λ::Union{Vector,Void},
-                        wts::Union{FPVector,Void}, offset::Vector, α::Real, nλ::Int,
-                        ω::Union{Vector, Void}, intercept::Bool, irls_tol::Real, dofit::Bool)
+function build_model(X::AbstractMatrix{T}, y::FPVector, d::Normal, l::IdentityLink,
+                     lp::LinPred, λminratio::Real, λ::Union{Vector,Void},
+                     wts::Union{FPVector,Void}, offset::Vector, α::Real, nλ::Int,
+                     ω::Union{Vector, Void}, intercept::Bool, irls_tol::Real, dofit::Bool) where T
     # Special no-IRLS case
     mu = isempty(offset) ? y : y + offset
     nullb0 = intercept ? mean(mu, weights(wts)) : zero(T)
@@ -251,10 +251,10 @@ function build_model{T}(X::AbstractMatrix{T}, y::FPVector, d::Normal, l::Identit
     (model, nulldev, nullb0, λ)
 end
 
-function build_model{T}(X::AbstractMatrix{T}, y::FPVector, d::UnivariateDistribution, l::Link,
-                        lp::LinPred, λminratio::Real, λ::Union{Vector,Void},
-                        wts::Union{FPVector,Void}, offset::Vector, α::Real, nλ::Int,
-                        ω::Union{Vector, Void}, intercept::Bool, irls_tol::Real, dofit::Bool)
+function build_model(X::AbstractMatrix{T}, y::FPVector, d::UnivariateDistribution, l::Link,
+                     lp::LinPred, λminratio::Real, λ::Union{Vector,Void},
+                     wts::Union{FPVector,Void}, offset::Vector, α::Real, nλ::Int,
+                     ω::Union{Vector, Void}, intercept::Bool, irls_tol::Real, dofit::Bool) where T
     # Fit to find null deviance
     # Maybe we should reuse this GlmResp object?
     nullmodel = fit(GeneralizedLinearModel, ones(T, length(y), ifelse(intercept, 1, 0)), y, d, l;
@@ -283,21 +283,21 @@ defaultalgorithm(d::UnivariateDistribution, l::Link, n::Int, p::Int) = NaiveCoor
 initpenaltyfactor(penalty_factor::Void,p::Int) = nothing
 initpenaltyfactor(penalty_factor::Vector,p::Int) = rescale(penalty_factor, p)
 
-function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
-                                                     X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
-                                                     l::Link=canonicallink(d);
-                                                     wts::Union{FPVector,Void}=ones(T, length(y)),
-                                                     offset::V=similar(y, 0),
-                                                     α::Number=one(eltype(y)), nλ::Int=100,
-                                                     λminratio::Number=ifelse(size(X, 1) < size(X, 2), 0.01, 1e-4),
-                                                     λ::Union{Vector,Void}=nothing, standardize::Bool=true,
-                                                     intercept::Bool=true,
-                                                     algorithm::Type=defaultalgorithm(d, l, size(X, 1), size(X, 2)),
-                                                     dofit::Bool=true,
-                                                     irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
-                                                     maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
-                                                     penalty_factor::Union{Vector,Void}=nothing,
-                                                     fitargs...)
+function StatsBase.fit(::Type{LassoPath},
+                       X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
+                       l::Link=canonicallink(d);
+                       wts::Union{FPVector,Void}=ones(T, length(y)),
+                       offset::V=similar(y, 0),
+                       α::Number=one(eltype(y)), nλ::Int=100,
+                       λminratio::Number=ifelse(size(X, 1) < size(X, 2), 0.01, 1e-4),
+                       λ::Union{Vector,Void}=nothing, standardize::Bool=true,
+                       intercept::Bool=true,
+                       algorithm::Type=defaultalgorithm(d, l, size(X, 1), size(X, 2)),
+                       dofit::Bool=true,
+                       irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
+                       maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
+                       penalty_factor::Union{Vector,Void}=nothing,
+                       fitargs...) where {T<:AbstractFloat,V<:FPVector}
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
     n = length(y)
     length(wts) == n || error("length(wts) = $(length(wts)) should be 0 or $n")
@@ -453,8 +453,8 @@ function StatsBase.coef(path::RegularizationPath; select=:all, nCVfolds=10)
 end
 
 "link of underlying GLM"
-GLM.linkfun{M<:LinearModel}(path::RegularizationPath{M}) = IdentityLink()
-GLM.linkfun{V<:FPVector,D<:UnivariateDistribution,L<:Link,L2<:GLM.LinPred}(path::RegularizationPath{GeneralizedLinearModel{GlmResp{V,D,L},L2}}) = L()
+GLM.linkfun(path::RegularizationPath{M}) where {M<:LinearModel} = IdentityLink()
+GLM.linkfun(path::RegularizationPath{GeneralizedLinearModel{GlmResp{V,D,L},L2}}) where {V<:FPVector,D<:UnivariateDistribution,L<:Link,L2<:GLM.LinPred} = L()
 
 ## Prediction function for GLMs
 function StatsBase.predict(path::RegularizationPath, newX::AbstractMatrix{T}; offset::FPVector=T[], select=:all) where {T<:AbstractFloat}
@@ -488,7 +488,7 @@ function StatsBase.predict(path::RegularizationPath, newX::AbstractMatrix{T}; of
 end
 
 "distribution of underlying GLM"
-distfun{M<:LinearModel}(path::RegularizationPath{M}) = Normal()
+distfun(path::RegularizationPath{M}) where {M<:LinearModel} = Normal()
 distfun(path::RegularizationPath) = path.m.rr.d
 
 "deviance at each segment of the path for the fitted model and data"
@@ -498,9 +498,9 @@ StatsBase.deviance(path::RegularizationPath) = (1 .- path.pct_dev) .* path.nulld
 deviance at each segement of the path for (potentially new) data X and y
 select=:all or :AICc like in coef()
 """
-function StatsBase.deviance{T<:AbstractFloat,V<:FPVector}(path::RegularizationPath, X::AbstractMatrix{T}, y::V;
+function StatsBase.deviance(path::RegularizationPath, X::AbstractMatrix{T}, y::V;
                     offset::FPVector=T[], select=:all,
-                    wts::FPVector=ones(T, length(y)))
+                    wts::FPVector=ones(T, length(y))) where {T<:AbstractFloat,V<:FPVector}
     μ = predict(path, X; offset=offset, select=select)
     deviance(path, y, μ, wts)
 end
@@ -508,8 +508,8 @@ end
 """
 deviance at each segment of the path for (potentially new) y and predicted values μ
 """
-function StatsBase.deviance{T<:AbstractFloat,V<:FPVector}(path::RegularizationPath, y::V, μ::AbstractArray{T},
-                wts::FPVector=ones(T, length(y)))
+function StatsBase.deviance(path::RegularizationPath, y::V, μ::AbstractArray{T},
+                wts::FPVector=ones(T, length(y))) where {T<:AbstractFloat,V<:FPVector}
     # get model specs from path
     d = distfun(path)
 

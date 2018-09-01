@@ -38,12 +38,12 @@ end
 pathtype(::LassoPath) = LassoPath
 pathtype(::GammaLassoPath) = GammaLassoPath
 
-function cross_validate_path{T<:AbstractFloat,V<:FPVector}(path::RegularizationPath,    # fitted path
-                                                     X::AbstractMatrix{T}, y::V;        # potentially new data
-                                                     gen=Kfold(length(y),10),           # folds generator (see MLBase)
-                                                     select=:CVmin,                     # :CVmin or :CV1se
-                                                     offset::FPVector=T[],
-                                                     fitargs...)
+function cross_validate_path(path::RegularizationPath,    # fitted path
+                       X::AbstractMatrix{T}, y::V;        # potentially new data
+                       gen=Kfold(length(y),10),           # folds generator (see MLBase)
+                       select=:CVmin,                     # :CVmin or :CV1se
+                       offset::FPVector=T[],
+                       fitargs...) where {T<:AbstractFloat,V<:FPVector}
     @extractfields path m λ
     n,p = size(X)
     @assert n == length(y) "size(X,1) != length(y)"

@@ -15,19 +15,19 @@ struct NormalCoefs{T}
     NormalCoefs{T}(lin::Real) where {T} = new(lin, 0)
     NormalCoefs{T}(lin::Real, quad::Real) where {T} = new(lin, quad)
 end
-+{T}(a::NormalCoefs{T}, b::NormalCoefs{T}) = NormalCoefs{T}(a.lin+b.lin, a.quad+b.quad)
--{T}(a::NormalCoefs{T}, b::NormalCoefs{T}) = NormalCoefs{T}(a.lin-b.lin, a.quad-b.quad)
-+{T}(a::NormalCoefs{T}, b::Real) = NormalCoefs{T}(a.lin+b, a.quad)
--{T}(a::NormalCoefs{T}, b::Real) = NormalCoefs{T}(a.lin-b, a.quad)
-*{T}(a::Real, b::NormalCoefs{T}) = NormalCoefs{T}(a*b.lin, a*b.quad)
++(a::NormalCoefs{T}, b::NormalCoefs{T}) where {T} = NormalCoefs{T}(a.lin+b.lin, a.quad+b.quad)
+-(a::NormalCoefs{T}, b::NormalCoefs{T}) where {T} = NormalCoefs{T}(a.lin-b.lin, a.quad-b.quad)
++(a::NormalCoefs{T}, b::Real) where {T} = NormalCoefs{T}(a.lin+b, a.quad)
+-(a::NormalCoefs{T}, b::Real) where {T} = NormalCoefs{T}(a.lin-b, a.quad)
+*(a::Real, b::NormalCoefs{T}) where {T} = NormalCoefs{T}(a*b.lin, a*b.quad)
 
 # Implements Algorithm 2 lines 8 and 19
-solveforbtilde{T}(a::NormalCoefs{T}, lhs::Real) = (lhs - a.lin)/(2 * a.quad)
+solveforbtilde(a::NormalCoefs{T}, lhs::Real) where {T} = (lhs - a.lin)/(2 * a.quad)
 
 # These are marginally faster than computing btilde explicitly because
 # they avoid division
-btilde_lt{T}(a::NormalCoefs{T}, lhs::Real, x::Real) = lhs - a.lin > 2 * a.quad * x
-btilde_gt{T}(a::NormalCoefs{T}, lhs::Real, x::Real) = lhs - a.lin < 2 * a.quad * x
+btilde_lt(a::NormalCoefs{T}, lhs::Real, x::Real) where {T} = lhs - a.lin > 2 * a.quad * x
+btilde_gt(a::NormalCoefs{T}, lhs::Real, x::Real) where {T} = lhs - a.lin < 2 * a.quad * x
 
 struct Knot{T,S}
     pos::T
@@ -41,14 +41,14 @@ struct FusedLasso{T,S} <: RegressionModel
     bp::Matrix{T}             # Backpointers
 end
 
-function StatsBase.fit{T}(::Type{FusedLasso}, y::AbstractVector{T}, λ::Real; dofit::Bool=true)
+function StatsBase.fit(::Type{FusedLasso}, y::AbstractVector{T}, λ::Real; dofit::Bool=true) where T
     S = NormalCoefs{T}
     flsa = FusedLasso{T,S}(Array{T}(length(y)), Array{Knot{T,S}}(2), Array{T}(2, length(y)-1))
     dofit && fit!(flsa, y, λ)
     flsa
 end
 
-function StatsBase.fit!{T,S}(flsa::FusedLasso{T,S}, y::AbstractVector{T}, λ::Real)
+function StatsBase.fit!(flsa::FusedLasso{T,S}, y::AbstractVector{T}, λ::Real) where {T,S}
     β = flsa.β
     knots = flsa.knots
     bp = flsa.bp
