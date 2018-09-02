@@ -1,4 +1,5 @@
-using Lasso, FactCheck
+using Lasso
+using Random
 DATADIR = joinpath(dirname(@__FILE__), "data")
 
 function diffmatslow(order, n)
@@ -10,30 +11,24 @@ function diffmatslow(order, n)
 end
 
 # Test that DifferenceMatrix behaves as expected
-facts("DifferenceMatrix") do
-    for order in (1, 2, 3)
-        context("order = $(order)") do
-            D1 = diffmatslow(order, 100)
-            D2 = Lasso.TrendFiltering.DifferenceMatrix{Float64}(order, 100)
-            x = randn(100)
-            @fact D2'D2 --> D1'D1
-            @fact D2*x --> roughly(D1*x)
-            @fact D2'*x[1:size(D1, 1)] --> roughly(D1'*x[1:size(D1, 1)])
-        end
+@testset "DifferenceMatrix" begin
+    @testset "order = $(order)" for order in (1, 2, 3)
+        D1 = diffmatslow(order, 100)
+        D2 = Lasso.TrendFiltering.DifferenceMatrix{Float64}(order, 100)
+        x = randn(100)
+        @test D2'D2 == D1'D1
+        @test D2*x ≈ D1*x
+        @test D2'*x[1:size(D1, 1)] ≈ D1'*x[1:size(D1, 1)]
     end
 end
 
 # Test against results from glmgen
 lakehuron = readcsv(joinpath(DATADIR, "LakeHuron.csv"); header=true)[1][:, 3]
-facts("TrendFiltering") do
-    for order in (1, 2, 3)
-        context("order = $(order)") do
-            for lambda in (1., 10., 100.)
-                context("lambda = $(lambda)") do
-                    @fact coef(fit(TrendFilter, lakehuron, order, lambda; tol=1e-9)) -->
-                          roughly(vec(readcsv(joinpath(DATADIR, "LakeHuron_order_$(order)_lambda_$(lambda).csv"))))
-                end
-            end
+@testset "TrendFiltering" begin
+    @testset "order = $(order)" for order in (1, 2, 3)
+        @testset "lambda = $(lambda)" for lambda in (1., 10., 100.)
+            @test coef(fit(TrendFilter, lakehuron, order, lambda; tol=1e-9)) ≈
+                  vec(readcsv(joinpath(DATADIR, "LakeHuron_order_$(order)_lambda_$(lambda).csv")))
         end
     end
 end

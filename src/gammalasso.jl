@@ -19,7 +19,7 @@ mutable struct GammaLassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <:
     b0::Vector{T}                 # model intercepts
     niter::Int                    # number of coordinate descent iterations
 
-    GammaLassoPath{S,T}(m, nulldev::T, nullb0::T, λ::Vector{T}, autoλ::Bool, γ::Vector{T}, penalty_factor::Union{Vector,Void}, Xnorm::Vector{T}) where {S,T} =
+    GammaLassoPath{S,T}(m, nulldev::T, nullb0::T, λ::Vector{T}, autoλ::Bool, γ::Vector{T}, penalty_factor::Union{Vector,Nothing}, Xnorm::Vector{T}) where {S,T} =
         new(m, nulldev, nullb0, λ, autoλ, γ, penalty_factor, Xnorm)
 end
 
@@ -46,17 +46,17 @@ function StatsBase.fit(::Type{GammaLassoPath},
                        X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
                        l::Link=canonicallink(d);
                        γ::Union{Number,Vector{Number}}=0.0,
-                       wts::Union{FPVector,Void}=ones(T, length(y)),
+                       wts::Union{FPVector,Nothing}=ones(T, length(y)),
                        offset::AbstractVector=similar(y, 0),
                        α::Number=one(eltype(y)), nλ::Int=100,
                        λminratio::Number=ifelse(size(X, 1) < size(X, 2), 0.01, 1e-4),
-                       λ::Union{Vector,Void}=nothing, standardize::Bool=true,
+                       λ::Union{Vector,Nothing}=nothing, standardize::Bool=true,
                        intercept::Bool=true,
                        algorithm::Type=defaultalgorithm(d, l, size(X, 1), size(X, 2)),
                        dofit::Bool=true,
                        irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
                        maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
-                       penalty_factor::Union{Vector,Void}=nothing,
+                       penalty_factor::Union{Vector,Nothing}=nothing,
                        fitargs...) where {T<:AbstractFloat,V<:FPVector}
 
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
@@ -69,7 +69,7 @@ function StatsBase.fit(::Type{GammaLassoPath},
         for i = 1:length(Xnorm)
             @inbounds Xnorm[i] = 1/Xnorm[i]
         end
-        X = X .* Xnorm.'
+        X = X .* transpose(Xnorm)
     else
         Xnorm = T[]
     end
@@ -84,7 +84,7 @@ function StatsBase.fit(::Type{GammaLassoPath},
     end
 
     # Initialize penalty factors to 1 only if not supplied otherwise rescale as in glmnet
-    if isa(penalty_factor, Void)
+    if isa(penalty_factor, Nothing)
         penalty_factor = ones(T,p)
     else
         penalty_factor = initpenaltyfactor(convert(Vector{T},penalty_factor),p)

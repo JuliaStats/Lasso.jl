@@ -1,5 +1,5 @@
 module FusedLassoMod
-using StatsBase, Compat
+using StatsBase
 import Base: +, -, *
 export FusedLasso
 
@@ -64,7 +64,7 @@ function StatsBase.fit!(flsa::FusedLasso{T,S}, y::AbstractVector{T}, λ::Real) w
         t1 = 0
         t2 = 0
         aminus = NormalCoefs{T}(y[k], -0.5)                # Algorithm 2 line 4
-        for t1 = 1:length(knots)-1                         # Algorithm 2 line 5
+        for outer t1 = 1:length(knots)-1                         # Algorithm 2 line 5
             knot = knots[t1]
             aminus += knot.sign*knot.coefs                 # Algorithm 2 line 6
             btilde_lt(aminus, λ, knots[t1+1].pos) && break # Algorithm 2 line 7-8

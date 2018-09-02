@@ -2,7 +2,7 @@
 S(z, γ) = abs(z) <= γ ? zero(z) : ifelse(z > 0, z - γ, z + γ)
 
 # Elastic net penalty with parameter α and given coefficients
-function P(α::T, β::SparseCoefficients{T}, ω::Void) where T
+function P(α::T, β::SparseCoefficients{T}, ω::Nothing) where T
     x = zero(T)
     @inbounds @simd for i = 1:nnz(β)
         x += (1 - α)/2*abs2(β.coef[i]) + α*abs(β.coef[i])
@@ -20,7 +20,7 @@ end
 
 abstract type CoordinateDescent{T,Intercept,M<:AbstractMatrix} <: LinPred end
 
-mutable struct NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator,W<:Union{Vector,Void}} <: CoordinateDescent{T,Intercept,M}
+mutable struct NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator,W<:Union{Vector,Nothing}} <: CoordinateDescent{T,Intercept,M}
     X::M                          # original design matrix
     μy::T                         # mean of y at current weights
     μX::Vector{T}                 # mean of X at current weights (in predictor order)
@@ -38,7 +38,7 @@ mutable struct NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:Coefficie
     tol::T                        # tolerance
     ω::W                          # coefficient-specific penalty weights
 
-    NaiveCoordinateDescent{T,Intercept,M,S,W}(X::M, α::Real, maxncoef::Int, tol::Real, coefitr::S, ω::Union{Vector{T},Void}) where {T,Intercept,M,S,W} =
+    NaiveCoordinateDescent{T,Intercept,M,S,W}(X::M, α::Real, maxncoef::Int, tol::Real, coefitr::S, ω::Union{Vector{T},Nothing}) where {T,Intercept,M,S,W} =
         new(X, zero(T), zeros(T, size(X, 2)), zeros(T, maxncoef), Vector{T}(size(X, 1)), zero(T),
             Vector{T}(size(X, 1)), Vector{T}(size(X, 1)), convert(T, NaN), coefitr, convert(T, NaN),
             α, typemax(Int), maxncoef, tol, ω)
@@ -213,7 +213,7 @@ end
     end
 end
 
-λω(λ,ω::Void,ipred::Int) = λ
+λω(λ,ω::Nothing,ipred::Int) = λ
 λω(λ,ω::Vector,ipred::Int) = λ*ω[ipred]
 
 # Performs the cycle of all predictors
@@ -298,7 +298,7 @@ function linpred!(mu::Vector{T}, cd::NaiveCoordinateDescent{T}, coef::SparseCoef
     mu
 end
 
-mutable struct CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator,W<:Union{Vector,Void}} <: CoordinateDescent{T,Intercept,M}
+mutable struct CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator,W<:Union{Vector,Nothing}} <: CoordinateDescent{T,Intercept,M}
     X::M                          # original design matrix
     μy::T                         # mean of y at current weights
     μX::Vector{T}                 # mean of X at current weights
@@ -317,7 +317,7 @@ mutable struct CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:Coef
     tol::T                        # tolerance
     ω::W                          # coefficient-specific penalty weights
 
-    function CovarianceCoordinateDescent{T,Intercept,M,S,W}(X::M, α::Real, maxncoef::Int, tol::Real, coefiter::S, ω::Union{Vector{T},Void}) where {T,Intercept,M,S,W}
+    function CovarianceCoordinateDescent{T,Intercept,M,S,W}(X::M, α::Real, maxncoef::Int, tol::Real, coefiter::S, ω::Union{Vector{T},Nothing}) where {T,Intercept,M,S,W}
         new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Vector{T}(size(X, 2)),
             Vector{T}(size(X, 2)), Matrix{T}(maxncoef, size(X, 2)), Vector{T}(size(X, 1)),
             Vector{T}(size(X, 1)), convert(T, NaN), coefiter, convert(T, NaN), α,
@@ -592,7 +592,7 @@ function cdfit!(coef::SparseCoefficients{T}, cd::CoordinateDescent{T}, λ, crite
     b0 = intercept(coef, cd)
 
     iter = 0
-    for iter = 1:maxiter
+    for outer iter = 1:maxiter
         oldb0 = b0
         maxdelta = cycle!(coef, cd, λ, converged)
         b0 = intercept(coef, cd)

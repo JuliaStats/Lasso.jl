@@ -1,8 +1,10 @@
-using FactCheck
+using Test
 
-include("lasso.jl")
+@testset "Lasso" begin
+
+# include("lasso.jl")
 include("gammalasso.jl")
-include("fusedlasso.jl")
-include("trendfiltering.jl")
+# include("fusedlasso.jl")
+# include("trendfiltering.jl")
 
-FactCheck.exitstatus()
+end

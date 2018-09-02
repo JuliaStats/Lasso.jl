@@ -1,5 +1,5 @@
 module TrendFiltering
-using StatsBase, ..FusedLassoMod, ..Util, Compat
+using LinearAlgebra, SparseArrays, StatsBase, ..FusedLassoMod, ..Util
 import Base: +, -, *
 export TrendFilter
 
@@ -24,7 +24,7 @@ end
 Base.size(K::DifferenceMatrix) = (K.n-K.k-1, K.n)
 
 # Multiply by difference matrix by filtering
-function Base.LinAlg.A_mul_B!(out::AbstractVector, K::DifferenceMatrix, x::AbstractVector, α::Real=1)
+function LinearAlgebra.A_mul_B!(out::AbstractVector, K::DifferenceMatrix, x::AbstractVector, α::Real=1)
     length(x) == size(K, 2) || throw(DimensionMismatch())
     length(out) == size(K, 1) || throw(DimensionMismatch())
     b = K.b
@@ -45,7 +45,7 @@ function Base.LinAlg.A_mul_B!(out::AbstractVector, K::DifferenceMatrix, x::Abstr
 end
 *(K::DifferenceMatrix, x::AbstractVector) = A_mul_B!(similar(x, size(K, 1)), K, x)
 
-function Base.LinAlg.At_mul_B!(out::AbstractVector, K::DifferenceMatrix, x::AbstractVector, α::Real=1)
+function LinearAlgebra.At_mul_B!(out::AbstractVector, K::DifferenceMatrix, x::AbstractVector, α::Real=1)
     length(x) == size(K, 1) || throw(DimensionMismatch())
     length(out) == size(K, 2) || throw(DimensionMismatch())
     b = K.b
@@ -67,16 +67,16 @@ function Base.LinAlg.At_mul_B!(out::AbstractVector, K::DifferenceMatrix, x::Abst
     end
     out
 end
-Base.LinAlg.Ac_mul_B!(out::AbstractVector, K::DifferenceMatrix, x::AbstractVector, α::Real=1) = At_mul_B!(out, K, x)
-Base.LinAlg.At_mul_B(K::DifferenceMatrix, x::AbstractVector) = At_mul_B!(similar(x, size(K, 2)), K, x)
-Base.LinAlg.Ac_mul_B(K::DifferenceMatrix, x::AbstractVector) = At_mul_B!(similar(x, size(K, 2)), K, x)
+LinearAlgebra.Ac_mul_B!(out::AbstractVector, K::DifferenceMatrix, x::AbstractVector, α::Real=1) = At_mul_B!(out, K, x)
+LinearAlgebra.At_mul_B(K::DifferenceMatrix, x::AbstractVector) = At_mul_B!(similar(x, size(K, 2)), K, x)
+LinearAlgebra.Ac_mul_B(K::DifferenceMatrix, x::AbstractVector) = At_mul_B!(similar(x, size(K, 2)), K, x)
 
 # Product with self, efficiently
-function Base.LinAlg.At_mul_B(K::DifferenceMatrix, K2::DifferenceMatrix)
+function LinearAlgebra.At_mul_B(K::DifferenceMatrix, K2::DifferenceMatrix)
     K === K2 || error("matrix multiplication only supported with same difference matrix")
     computeDtD(K.b, K.n)
 end
-Base.LinAlg.Ac_mul_B(K::DifferenceMatrix, K2::DifferenceMatrix) = At_mul_B(K::DifferenceMatrix, K2::DifferenceMatrix)
+LinearAlgebra.Ac_mul_B(K::DifferenceMatrix, K2::DifferenceMatrix) = At_mul_B(K::DifferenceMatrix, K2::DifferenceMatrix)
 
 function computeDtD(c, n)
     k = length(c) - 2
@@ -177,7 +177,7 @@ function StatsBase.fit!(tf::TrendFilter{T}, y::AbstractVector{T}, λ::Real; nite
 
     oldobj = obj = Inf
     local iter
-    for iter = 1:niter
+    for outer iter = 1:niter
         # Eq. 11 (update β)
         broadcast!(+, αpu, α, u)
         At_mul_B!(ρDtαu, Dk, αpu, ρ)

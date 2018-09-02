@@ -4,3 +4,6 @@ Distributions
 GLM
 Reexport
 MLBase
+LinearAlgebra
+SparseArrays
+Random
