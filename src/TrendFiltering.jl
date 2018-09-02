@@ -150,7 +150,7 @@ mutable struct TrendFilter{T,S,VT}
     niter::Int                               # Number of ADMM iterations
 end
 
-function StatsBase.fit{T}(::Type{TrendFilter}, y::AbstractVector{T}, order, λ; dofit::Bool=true, args...)
+function StatsBase.fit(::Type{TrendFilter}, y::AbstractVector{T}, order, λ; dofit::Bool=true, args...) where T
     order >= 1 || throw(ArgumentError("order must be >= 1"))
     Dkp1 = DifferenceMatrix{T}(order, length(y))
     Dk = DifferenceMatrix{T}(order-1, length(y))
@@ -163,7 +163,7 @@ function StatsBase.fit{T}(::Type{TrendFilter}, y::AbstractVector{T}, order, λ; 
     return tf
 end
 
-function StatsBase.fit!{T}(tf::TrendFilter{T}, y::AbstractVector{T}, λ::Real; niter=100000, tol=1e-6, ρ=λ)
+function StatsBase.fit!(tf::TrendFilter{T}, y::AbstractVector{T}, λ::Real; niter=100000, tol=1e-6, ρ=λ) where T
     @extractfields tf Dkp1 Dk DktDk β u Dkβ Dkp1β flsa
     length(y) == length(β) || throw(ArgumentError("input size $(length(y)) does not match model size $(length(β))"))
 
