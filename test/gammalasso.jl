@@ -56,7 +56,7 @@ Random.seed!(243214)
                 # compare
                 @test issimilarhead(glp.λ,fittable[Symbol("fit.lambda")];rtol=rtol)
                 @test issimilarhead(glp.b0,fittable[Symbol("fit.alpha")];rtol=rtol)
-                @test issimilarhead(full(glp.coefs'),gcoefs';rtol=rtol)
+                @test issimilarhead(convert(Matrix{Float64},glp.coefs'),gcoefs';rtol=rtol)
                 # we follow GLM.jl convention where deviance is scaled by nobs, while in gamlr it is not
                 @test issimilarhead(deviance(glp),fittable[Symbol("fit.deviance")]/nobs(glp);rtol=rtol)
                 @test issimilarhead(deviance(glp,X,y),fittable[Symbol("fit.deviance")]/nobs(glp);rtol=rtol)

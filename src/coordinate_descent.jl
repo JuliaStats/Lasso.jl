@@ -668,7 +668,7 @@ function StatsBase.fit!(path::RegularizationPath{S,T}; verbose::Bool=false, irls
     dev_ratio = convert(T, NaN)
     dev = convert(T, NaN)
     b0 = zero(T)
-    scratchmu = Vector{T}(size(X, 1))
+    scratchmu = Vector{T}(undef, size(X, 1))
     objold = convert(T, Inf)
 
     if autoλ
@@ -780,7 +780,7 @@ function StatsBase.fit!(path::RegularizationPath{S,T}; verbose::Bool=false, irls
     path.b0 = b0s[1:i]
     path.niter = niter
     if !isempty(Xnorm)
-        scale!(Xnorm, path.coefs)
+        lmul!(Diagonal(Xnorm), path.coefs)
     end
 end
 
@@ -845,6 +845,6 @@ function StatsBase.fit!(path::RegularizationPath{S,T}; verbose::Bool=false,
     path.b0 = b0s[1:i]
     path.niter = niter
     if !isempty(Xnorm)
-        scale!(Xnorm, path.coefs)
+        lmul!(Diagonal(Xnorm), path.coefs)
     end
 end

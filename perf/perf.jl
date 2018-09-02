@@ -1,5 +1,5 @@
 module Benchmark
-using Lasso, GLMNet, BenchmarkLite, Distributions
+using Lasso, LinearAlgebra, GLMNet, BenchmarkLite, Distributions
 
 # As in Friedman et al., generate random X and Y matrix such that SNR=3
 function makeXY(ρ, nsamples, nfeatures)
@@ -8,7 +8,7 @@ function makeXY(ρ, nsamples, nfeatures)
     X = rand(MvNormal(Σ), nsamples)'
     β = [(-1)^j*exp(-2*(j-1)/20) for j = 1:nfeatures]
     signal = (β'*Σ*β)[1]
-    y = X*β + scale!(randn(nsamples), sqrt(signal/3))
+    y = X*β + lmul!(Diagonal(randn(nsamples)), sqrt(signal/3))
     # @show uvar = var(y - X*(X\y))
     # @show evar = var(y - mean(y)) - uvar
     # @show evar/uvar

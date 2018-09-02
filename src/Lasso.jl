@@ -12,7 +12,7 @@ include("FusedLasso.jl")
 include("TrendFiltering.jl")
 
 using Reexport, LinearAlgebra, SparseArrays, Random, .Util, MLBase
-import Random: SamplerRangeInt, RangeGenerator
+import Random: Sampler
 @reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
 using GLM: FPVector
 export RegularizationPath, LassoPath, GammaLassoPath, NaiveCoordinateDescent,
@@ -121,13 +121,15 @@ end
 ## COEFFICIENT ITERATION IN SEQUENTIAL OR RANDOM ORDER
 struct RandomCoefficientIterator
     rng::MersenneTwister
-    rg::SamplerRangeInt{Int,UInt}
+    rg::Sampler
     coeforder::Vector{Int}
 end
 const RANDOMIZE_DEFAULT = true
 
-RandomCoefficientIterator() =
-    RandomCoefficientIterator(MersenneTwister(1337), RangeGenerator(1:2), Int[])
+function RandomCoefficientIterator()
+    rng = MersenneTwister(1337)
+    RandomCoefficientIterator(rng, Sampler(rng, 1:2), Int[])
+end
 
 const CoefficientIterator = Union{UnitRange{Int},RandomCoefficientIterator}
 
@@ -147,7 +149,7 @@ Base.done(x::RandomCoefficientIterator, i) = i > length(x.coeforder)
 # Add an additional coefficient and return a new CoefficientIterator
 function addcoef(x::RandomCoefficientIterator, icoef::Int)
     push!(x.coeforder, icoef)
-    RandomCoefficientIterator(x.rng, RangeGenerator(1:length(x.coeforder)), x.coeforder)
+    RandomCoefficientIterator(x.rng, Sampler(x.rng, 1:length(x.coeforder)), x.coeforder)
 end
 addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
 
@@ -303,7 +305,7 @@ function StatsBase.fit(::Type{LassoPath},
 
     # Standardize predictors if requested
     if standardize
-        Xnorm = vec(full(std(X, 1, corrected=false)))
+        Xnorm = vec(convert(Matrix{T},std(X, 1, corrected=false)))
         if any(x -> x == zero(T), Xnorm)
             warn("""One of the predicators (columns of X) is a constant, so it can not be standardized.
                   To include a constant predicator set standardize = false and intercept = false""")
@@ -379,8 +381,8 @@ end
 function StatsBase.aicc(path::RegularizationPath;k=2)
     d = df(path)
     n = nobs(path)
-    ic = -2loglikelihood(path) + k*d + k*d.*(d+1)./(n-d-1)
-    ic[d.+1 .> n] = realmax(eltype(ic))
+    ic = -2loglikelihood(path) .+ (k*d + k*d.*(d+1)./(n-d-1))
+    ic[d.+1 .> n] .= floatmax(eltype(ic))
     ic
 end
 

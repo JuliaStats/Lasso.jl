@@ -65,7 +65,7 @@ function StatsBase.fit(::Type{GammaLassoPath},
 
     # Standardize predictors if requested
     if standardize
-        Xnorm = vec(full(std(X, 1, corrected=false)))
+        Xnorm = vec(convert(Matrix{T},std(X, 1, corrected=false)))
         for i = 1:length(Xnorm)
             @inbounds Xnorm[i] = 1/Xnorm[i]
         end
