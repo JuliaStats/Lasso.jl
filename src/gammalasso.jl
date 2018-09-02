@@ -24,7 +24,7 @@ mutable struct GammaLassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <:
 end
 
 "Compute coefficient specific weights vector ω_j^t based on previous iteration coefficients β times penalty_factor"
-function computeω!{T}(ω::Vector{T}, γ::Vector{T}, penalty_factor::Vector{T}, β::SparseCoefficients{T})
+function computeω!(ω::Vector{T}, γ::Vector{T}, penalty_factor::Vector{T}, β::SparseCoefficients{T}) where T
     # initialize to penalty_factor
     copy!(ω,penalty_factor)
 
@@ -42,22 +42,22 @@ function computeω!{T}(ω::Vector{T}, γ::Vector{T}, penalty_factor::Vector{T}, 
 end
 poststep(path::GammaLassoPath, cd::CoordinateDescent, i::Int, coefs::SparseCoefficients) = computeω!(cd.ω, path.γ, path.penalty_factor, coefs)
 
-function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{GammaLassoPath},
-                                                     X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
-                                                     l::Link=canonicallink(d);
-                                                     γ::Union{Number,Vector{Number}}=0.0,
-                                                     wts::Union{FPVector,Void}=ones(T, length(y)),
-                                                     offset::AbstractVector=similar(y, 0),
-                                                     α::Number=one(eltype(y)), nλ::Int=100,
-                                                     λminratio::Number=ifelse(size(X, 1) < size(X, 2), 0.01, 1e-4),
-                                                     λ::Union{Vector,Void}=nothing, standardize::Bool=true,
-                                                     intercept::Bool=true,
-                                                     algorithm::Type=defaultalgorithm(d, l, size(X, 1), size(X, 2)),
-                                                     dofit::Bool=true,
-                                                     irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
-                                                     maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
-                                                     penalty_factor::Union{Vector,Void}=nothing,
-                                                     fitargs...)
+function StatsBase.fit(::Type{GammaLassoPath},
+                       X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
+                       l::Link=canonicallink(d);
+                       γ::Union{Number,Vector{Number}}=0.0,
+                       wts::Union{FPVector,Void}=ones(T, length(y)),
+                       offset::AbstractVector=similar(y, 0),
+                       α::Number=one(eltype(y)), nλ::Int=100,
+                       λminratio::Number=ifelse(size(X, 1) < size(X, 2), 0.01, 1e-4),
+                       λ::Union{Vector,Void}=nothing, standardize::Bool=true,
+                       intercept::Bool=true,
+                       algorithm::Type=defaultalgorithm(d, l, size(X, 1), size(X, 2)),
+                       dofit::Bool=true,
+                       irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
+                       maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
+                       penalty_factor::Union{Vector,Void}=nothing,
+                       fitargs...) where {T<:AbstractFloat,V<:FPVector}
 
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
     n = length(y)
