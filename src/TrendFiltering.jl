@@ -158,7 +158,7 @@ function StatsBase.fit(::Type{TrendFilter}, y::AbstractVector{T}, order, λ; dof
     u = zeros(T, size(Dk, 1))
     Dkβ = zeros(T, size(Dk, 1))
     Dkp1β = view(Dkβ, 1:size(Dkp1, 1))
-    tf = TrendFilter(Dkp1, Dk, Dk'Dk, β, u, Dkβ, Dkp1β, fit(FusedLasso, Dkβ, λ; dofit=false), -1)
+    tf = TrendFilter(Dkp1, Dk, At_mul_B(Dk,Dk), β, u, Dkβ, Dkp1β, fit(FusedLasso, Dkβ, λ; dofit=false), -1)
     dofit && fit!(tf, y, λ; args...)
     return tf
 end
