@@ -39,8 +39,8 @@ mutable struct NaiveCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:Coefficie
     ω::W                          # coefficient-specific penalty weights
 
     NaiveCoordinateDescent{T,Intercept,M,S,W}(X::M, α::Real, maxncoef::Int, tol::Real, coefitr::S, ω::Union{Vector{T},Nothing}) where {T,Intercept,M,S,W} =
-        new(X, zero(T), zeros(T, size(X, 2)), zeros(T, maxncoef), Vector{T}(size(X, 1)), zero(T),
-            Vector{T}(size(X, 1)), Vector{T}(size(X, 1)), convert(T, NaN), coefitr, convert(T, NaN),
+        new(X, zero(T), zeros(T, size(X, 2)), zeros(T, maxncoef), Vector{T}(undef, size(X, 1)), zero(T),
+            Vector{T}(undef, size(X, 1)), Vector{T}(undef, size(X, 1)), convert(T, NaN), coefitr, convert(T, NaN),
             α, typemax(Int), maxncoef, tol, ω)
 end
 
@@ -102,14 +102,14 @@ end
 function update!(cd::NaiveCoordinateDescent{T,Intercept}, coef::SparseCoefficients{T},
                               y::Vector{T}, wt::Vector{T}) where {T,Intercept}
     @extractfields cd residuals X Xssq weights oldy
-    copy!(weights, wt)
+    copyto!(weights, wt)
     weightsum = cd.weightsum = sum(weights)
     weightsuminv = inv(weightsum)
 
     # Update residuals without recomputing X*coef
     if nnz(coef) == 0
-        copy!(residuals, y)
-        copy!(oldy, y)
+        copyto!(residuals, y)
+        copyto!(oldy, y)
     else
         cd.residualoffset = 0
         @inbounds @simd for i = 1:length(y)
@@ -318,9 +318,9 @@ mutable struct CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:Coef
     ω::W                          # coefficient-specific penalty weights
 
     function CovarianceCoordinateDescent{T,Intercept,M,S,W}(X::M, α::Real, maxncoef::Int, tol::Real, coefiter::S, ω::Union{Vector{T},Nothing}) where {T,Intercept,M,S,W}
-        new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Vector{T}(size(X, 2)),
-            Vector{T}(size(X, 2)), Matrix{T}(maxncoef, size(X, 2)), Vector{T}(size(X, 1)),
-            Vector{T}(size(X, 1)), convert(T, NaN), coefiter, convert(T, NaN), α,
+        new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Vector{T}(undef, size(X, 2)),
+            Vector{T}(undef, size(X, 2)), Matrix{T}(undef, maxncoef, size(X, 2)), Vector{T}(undef, size(X, 1)),
+            Vector{T}(undef, size(X, 1)), convert(T, NaN), coefiter, convert(T, NaN), α,
             typemax(Int), maxncoef, tol, ω)
     end
 end
@@ -455,7 +455,7 @@ function update!(cd::CovarianceCoordinateDescent{T,Intercept,M},
                  coef::SparseCoefficients{T}, y::Vector{T}, wt::Vector{T}) where {T,Intercept,M}
     @extractfields cd X Xty μX Xssq weights
 
-    copy!(weights, wt)
+    copyto!(weights, wt)
     weightsum = cd.weightsum = sum(weights)
     weightsuminv = inv(weightsum)
 
@@ -692,7 +692,7 @@ function StatsBase.fit!(path::RegularizationPath{S,T}; verbose::Bool=false, irls
             converged = false
 
             for iirls=1:irls_maxiter # middle loop
-                copy!(oldcoef, newcoef)
+                copyto!(oldcoef, newcoef)
                 oldb0 = b0
 
                 # Compute working response
@@ -715,7 +715,7 @@ function StatsBase.fit!(path::RegularizationPath{S,T}; verbose::Bool=false, irls
                     f = 1.0
                     b0diff = b0 - oldb0
                     coefdiff = SparseCoefficients{T}(size(X, 2))
-                    copy!(coefdiff,newcoef)
+                    copyto!(coefdiff,newcoef)
                     for icoef = 1:nnz(oldcoef)
                         coefdiff.coef[icoef] -= oldcoef.coef[icoef]
                     end

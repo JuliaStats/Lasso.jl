@@ -76,14 +76,14 @@ function Base.setindex!(A::Matrix{T}, coef::SparseCoefficients, rg::UnitRange{In
     A
 end
 
-function Base.copy!(x::SparseCoefficients, y::SparseCoefficients)
+function Base.copyto!(x::SparseCoefficients, y::SparseCoefficients)
     length(x) == length(y) || throw(DimensionMismatch())
     n = length(y.coef)
     resize!(x.coef, n)
     resize!(x.coef2predictor, n)
-    copy!(x.coef, y.coef)
-    copy!(x.coef2predictor, y.coef2predictor)
-    copy!(x.predictor2coef, y.predictor2coef)
+    copyto!(x.coef, y.coef)
+    copyto!(x.coef2predictor, y.coef2predictor)
+    copyto!(x.predictor2coef, y.predictor2coef)
     x
 end
 
@@ -115,7 +115,7 @@ function addcoefs!(coefs::SparseMatrixCSC, newcoef::SparseCoefficients, i::Int)
     end
     resize!(nzval, n)
     resize!(rowval, n)
-    coefs.colptr[i+1:end] = n+1
+    coefs.colptr[i+1:end] .= n+1
 end
 
 ## COEFFICIENT ITERATION IN SEQUENTIAL OR RANDOM ORDER
@@ -134,17 +134,19 @@ end
 const CoefficientIterator = Union{UnitRange{Int},RandomCoefficientIterator}
 
 # Iterate over coefficients in random order
-function Base.start(x::RandomCoefficientIterator)
+function Base.iterate(x::RandomCoefficientIterator)
     if !isempty(x.coeforder)
         @inbounds for i = length(x.coeforder):-1:2
             j = rand(x.rng, x.rg)
             x.coeforder[i], x.coeforder[j] = x.coeforder[j], x.coeforder[i]
         end
+        x.coeforder[1], 2
+    else
+        nothing
     end
-    return 1
 end
-Base.next(x::RandomCoefficientIterator, i) = (x.coeforder[i], i += 1)
-Base.done(x::RandomCoefficientIterator, i) = i > length(x.coeforder)
+
+Base.iterate(x::RandomCoefficientIterator, i) = (i > length(x.coeforder)) ? nothing : (x.coeforder[i], i += 1)
 
 # Add an additional coefficient and return a new CoefficientIterator
 function addcoef(x::RandomCoefficientIterator, icoef::Int)
@@ -213,7 +215,7 @@ function computeλ(Xy, λminratio, α, nλ, ω::Union{Vector,Nothing})
     end
     λmax /= α
     logλmax = log(λmax)
-    λ = exp.(linspace(logλmax, logλmax + log(λminratio), nλ))
+    λ = exp.(range(logλmax, stop=logλmax + log(λminratio), length=nλ))
 end
 
 # rescales A so that it sums to base
@@ -234,7 +236,7 @@ function build_model(X::AbstractMatrix{T}, y::FPVector, d::Normal, l::IdentityLi
     if λ == nothing
         # Find max λ
         if intercept
-            muscratch = Vector{T}(length(mu))
+            muscratch = Vector{T}(undef, length(mu))
             @simd for i = 1:length(mu)
                 @inbounds muscratch[i] = (mu[i] - nullb0)*wts[i]
             end
@@ -305,7 +307,7 @@ function StatsBase.fit(::Type{LassoPath},
 
     # Standardize predictors if requested
     if standardize
-        Xnorm = vec(convert(Matrix{T},std(X, 1, corrected=false)))
+        Xnorm = vec(convert(Matrix{T},std(X; dims=1, corrected=false)))
         if any(x -> x == zero(T), Xnorm)
             warn("""One of the predicators (columns of X) is a constant, so it can not be standardized.
                   To include a constant predicator set standardize = false and intercept = false""")

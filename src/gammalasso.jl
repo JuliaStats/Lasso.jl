@@ -26,7 +26,7 @@ end
 "Compute coefficient specific weights vector ω_j^t based on previous iteration coefficients β times penalty_factor"
 function computeω!(ω::Vector{T}, γ::Vector{T}, penalty_factor::Vector{T}, β::SparseCoefficients{T}) where T
     # initialize to penalty_factor
-    copy!(ω,penalty_factor)
+    copyto!(ω,penalty_factor)
 
     # set weights of non zero betas
     @inbounds @simd for icoef = 1:nnz(β)
@@ -65,7 +65,7 @@ function StatsBase.fit(::Type{GammaLassoPath},
 
     # Standardize predictors if requested
     if standardize
-        Xnorm = vec(convert(Matrix{T},std(X, 1, corrected=false)))
+        Xnorm = vec(convert(Matrix{T},std(X; dims=1, corrected=false)))
         for i = 1:length(Xnorm)
             @inbounds Xnorm[i] = 1/Xnorm[i]
         end

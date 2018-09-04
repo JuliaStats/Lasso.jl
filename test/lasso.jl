@@ -9,7 +9,7 @@ testpath(T::DataType, d::Normal, l::GLM.Link, nsamples::Int, nfeatures::Int) =
 function makeX(ρ, nsamples, nfeatures, sparse)
     Σ = fill(ρ, nfeatures, nfeatures)
     Σ[diagind(Σ)] .= 1
-    X = rand(MvNormal(Σ), nsamples)'
+    X = permutedims(rand(MvNormal(Σ), nsamples))
     sparse && (X[randperm(length(X))[1:round(Int, length(X)*0.95)]] .= 0)
     β = [(-1)^j*exp(-2*(j-1)/20) for j = 1:nfeatures]
     (X, β)
@@ -43,7 +43,6 @@ function gen_penalty_factors(X,nonone_penalty_factors;frac1=0.7,frac0=0.05)
     penalty_factor, penalty_factor_glmnet
 end
 
-gen_penalty_factors(makeX(0.0, 150, 100, true)[1],true)
 # Test against GLMNet
 @testset "LassoPath" begin
     @testset "$(typeof(dist).name.name) $(typeof(link).name.name)" for (dist, link) in ((Normal(), IdentityLink()), (Binomial(), LogitLink()), (Poisson(), LogLink()))
@@ -95,7 +94,7 @@ gen_penalty_factors(makeX(0.0, 150, 100, true)[1],true)
 
                                 @testset "$(randomize ? "random" : "sequential")" for randomize = [false, true]
                                     niter = 0
-                                    @testset "$(algorithm == NaiveCoordinateDescent ? "naive" : "covariance")" for algorithm = [NaiveCoordinateDescent, CovarianceCoordinateDescent]
+                                    @testset "$(algorithm == NaiveCoordinateDescent ? "naive" : "covariance")" for algorithm = (NaiveCoordinateDescent, CovarianceCoordinateDescent)
                                         @testset "$(spfit ? "as SparseMatrixCSC" : "as Matrix")" for spfit in (true,false)
                                             criterion = :coef
                                             #  for criterion in (:coef,:obj) # takes too long for travis
@@ -113,10 +112,10 @@ gen_penalty_factors(makeX(0.0, 150, 100, true)[1],true)
                                                     cd_tol=cd_tol, irls_tol=irls_tol, criterion=criterion, randomize=randomize,
                                                     α=alpha, offset=offset, penalty_factor=penalty_factor)
                                             rd = (l.coefs - gbeta)./gbeta
-                                            rd[.!isfinite.(rd)] = 0
+                                            rd[.!isfinite.(rd)] .= 0
                                             println("         coefs adiff = $(maximum(abs, l.coefs - gbeta)) rdiff = $(maximum(abs, rd))")
                                             rd = (l.b0 - g.a0)./g.a0
-                                            rd[.!isfinite.(rd)] = 0
+                                            rd[.!isfinite.(rd)] .= 0
                                             println("         b0    adiff = $(maximum(abs, l.b0 - g.a0)) rdiff = $(maximum(abs, rd))")
                                             if criterion==:obj
                                                 # nothing to compare results against at this point, we just make sure the code runs

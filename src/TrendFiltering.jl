@@ -93,9 +93,9 @@ function computeDtD(c, n)
         end
     end
     filt!(sides, c, [one(eltype(c))], sides)
-    colptr = Vector{Int}(n+1)
-    rowval = Vector{Int}((k+2)*(n-k-1)+(k+1)*n)
-    nzval = Vector{Float64}((k+2)*(n-k-1)+(k+1)*n)
+    colptr = Vector{Int}(undef, n+1)
+    rowval = Vector{Int}(undef, (k+2)*(n-k-1)+(k+1)*n)
+    nzval = Vector{Float64}(undef, (k+2)*(n-k-1)+(k+1)*n)
     idx = 1
     for i = 1:k+1
         colptr[i] = idx

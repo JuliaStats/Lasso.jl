@@ -5,7 +5,7 @@ using Lasso, LinearAlgebra, GLMNet, BenchmarkLite, Distributions
 function makeXY(ρ, nsamples, nfeatures)
     Σ = fill(ρ, nfeatures, nfeatures)
     Σ[diagind(Σ)] = 1
-    X = rand(MvNormal(Σ), nsamples)'
+    X = permutedims(rand(MvNormal(Σ), nsamples))
     β = [(-1)^j*exp(-2*(j-1)/20) for j = 1:nfeatures]
     signal = (β'*Σ*β)[1]
     y = X*β + lmul!(Diagonal(randn(nsamples)), sqrt(signal/3))

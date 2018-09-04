@@ -43,7 +43,7 @@ end
 
 function StatsBase.fit(::Type{FusedLasso}, y::AbstractVector{T}, λ::Real; dofit::Bool=true) where T
     S = NormalCoefs{T}
-    flsa = FusedLasso{T,S}(Array{T}(length(y)), Array{Knot{T,S}}(2), Array{T}(2, length(y)-1))
+    flsa = FusedLasso{T,S}(Array{T}(undef, length(y)), Array{Knot{T,S}}(undef, 2), Array{T}(undef, 2, length(y)-1))
     dofit && fit!(flsa, y, λ)
     flsa
 end
