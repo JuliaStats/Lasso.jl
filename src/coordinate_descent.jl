@@ -570,7 +570,7 @@ intercept(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{T,true}) 
 # Value of the linear predictor
 function linpred!(mu::Vector{T}, cd::CovarianceCoordinateDescent{T},
                   coef::SparseCoefficients{T}, b0::T) where T
-    A_mul_B!(mu, cd.X, coef)
+    mul!(mu, cd.X, coef)
     if b0 != 0
         @simd for i = 1:length(mu)
             @inbounds mu[i] += b0

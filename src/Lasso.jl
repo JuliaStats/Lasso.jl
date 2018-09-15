@@ -30,7 +30,7 @@ struct SparseCoefficients{T} <: AbstractVector{T}
     SparseCoefficients{T}(n::Int) where {T} = new(T[], Int[], zeros(Int, n))
 end
 
-function LinearAlgebra.A_mul_B!(out::Vector, X::Matrix, coef::SparseCoefficients{T}) where T
+function LinearAlgebra.mul!(out::Vector, X::Matrix, coef::SparseCoefficients{T}) where T
     fill!(out, zero(eltype(out)))
     @inbounds for icoef = 1:nnz(coef)
         ipred = coef.coef2predictor[icoef]
@@ -42,7 +42,7 @@ function LinearAlgebra.A_mul_B!(out::Vector, X::Matrix, coef::SparseCoefficients
     out
 end
 
-function LinearAlgebra.A_mul_B!(out::Vector, X::SparseMatrixCSC, coef::SparseCoefficients{T}) where T
+function LinearAlgebra.mul!(out::Vector, X::SparseMatrixCSC, coef::SparseCoefficients{T}) where T
     @extractfields X colptr rowval nzval
     fill!(out, zero(eltype(out)))
     @inbounds for icoef = 1:nnz(coef)

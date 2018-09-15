@@ -16,9 +16,9 @@ end
         D1 = diffmatslow(order, 100)
         D2 = Lasso.TrendFiltering.DifferenceMatrix{Float64}(order, 100)
         x = randn(100)
-        @test At_mul_B(D2,D2) == D1'D1
+        @test D2'D2 == D1'D1
         @test D2*x ≈ D1*x
-        @test At_mul_B(D2,x[1:size(D1, 1)]) ≈ D1'*x[1:size(D1, 1)]
+        @test D2'*x[1:size(D1, 1)] ≈ D1'*x[1:size(D1, 1)]
     end
 end
 
