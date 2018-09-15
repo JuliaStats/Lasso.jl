@@ -374,18 +374,25 @@ function StatsBase.df(path::RegularizationPath)
 
     if dispersion_parameter(path)
         # add one for dispersion_parameter
-        dof+=1
+        dof.+=1
     end
 
     dof
 end
 
+function infocrit(d::T,l::F,n,k) where {T,F}
+    if d + one(T) > n
+        floatmax(F)
+    else
+        -2l + (k*d + k*d*(d+1)/(n-d-1))
+    end
+end
+
 function StatsBase.aicc(path::RegularizationPath;k=2)
-    d = df(path)
+    dfs = df(path)
+    ls = loglikelihood(path)
     n = nobs(path)
-    ic = -2loglikelihood(path) .+ (k*d + k*d.*(d+1)./(n-d-1))
-    ic[d.+1 .> n] .= floatmax(eltype(ic))
-    ic
+    broadcast((d,l)->infocrit(d,l,n,k), dfs, ls)
 end
 
 minAICc(path::RegularizationPath;k=2)=indmin(aicc(path;k=k))
@@ -527,7 +534,7 @@ function StatsBase.deviance(path::RegularizationPath, y::V, μ::AbstractArray{T}
 
     # deviance is just their sum
     if size(μ,2) > 1
-        vec(sum(devresidv,1))
+        vec(sum(devresidv,dims=1))
     else
         sum(devresidv)
     end

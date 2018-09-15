@@ -1,5 +1,8 @@
 using Test
 
+using CSV
+readcsvmat(path;header=false, kwargs...) = convert(Matrix{Float64},CSV.read(path;header=header, kwargs...))
+
 @testset "Lasso" begin
 
 include("lasso.jl")

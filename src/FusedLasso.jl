@@ -94,7 +94,7 @@ function StatsBase.fit!(flsa::FusedLasso{T,S}, y::AbstractVector{T}, λ::Real) w
                 deleteat!(knots, t2+2:length(knots))
             end
             if t1 == 1
-                unshift!(knots, Knot{T,S}(-Inf, S(0), 1))
+                pushfirst!(knots, Knot{T,S}(-Inf, S(0), 1))
             else
                 deleteat!(knots, 1:t1-2)
             end

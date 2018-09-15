@@ -1,5 +1,6 @@
 module TrendFiltering
 using LinearAlgebra, SparseArrays, StatsBase, ..FusedLassoMod, ..Util
+using DSP: filt!
 import Base: +, -, *
 export TrendFilter
 
@@ -46,8 +47,8 @@ end
 *(K::DifferenceMatrix, x::AbstractVector) = A_mul_B!(similar(x, size(K, 1)), K, x)
 
 function LinearAlgebra.At_mul_B!(out::AbstractVector, K::DifferenceMatrix, x::AbstractVector, α::Real=1)
-    length(x) == size(K, 1) || throw(DimensionMismatch())
-    length(out) == size(K, 2) || throw(DimensionMismatch())
+    length(x) == size(K, 1) || throw(DimensionMismatch("length(x) == $(length(x)) != $(size(K, 1)) == size(K, 1)"))
+    length(out) == size(K, 2) || throw(DimensionMismatch("length(out) == $(length(out)) != $(size(K, 2)) == size(K, 2)"))
     b = K.b
     si = fill!(K.si, 0)
     silen = length(b)-1
@@ -171,7 +172,7 @@ function StatsBase.fit!(tf::TrendFilter{T}, y::AbstractVector{T}, λ::Real; nite
     ρDtαu = β
     αpu = Dkβ
 
-    fact = cholfact(speye(size(Dk, 2)) + ρ*DktDk)
+    fact = cholesky(sparse(1.0I, size(Dk, 2), size(Dk, 2)) + ρ*DktDk)
     α = coef(flsa)
     fill!(α, 0)
 

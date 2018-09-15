@@ -3,7 +3,7 @@ using MLBase
 datapath = joinpath(dirname(@__FILE__), "..","test","data")
 
 (family, dist, link) = (("gaussian", Normal(), IdentityLink()), ("binomial", Binomial(), LogitLink()), ("poisson", Poisson(), LogLink()))[1]
-data = readcsv(joinpath(datapath,"gamlr.$family.data.csv"))
+data = readcsvmat(joinpath(datapath,"gamlr.$family.data.csv"))
 y = data[:,1]
 X = data[:,2:end]
 (n,p) = size(X)

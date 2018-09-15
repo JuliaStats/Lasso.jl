@@ -5,13 +5,13 @@ using MLBase
 # which chooses λt at lowest mean OOS deviance.
 
 function CVmin(oosdevs)
-    cvmeans = mean(oosdevs,2)
-    segCVmin = indmin(cvmeans)
+    cvmeans = mean(oosdevs,dims=2)
+    segCVmin = argmin(cvmeans)
 end
 
 function CV1se(oosdevs)
     nλ,nfolds = size(oosdevs)
-    cvmeans = vec(mean(oosdevs,2))
+    cvmeans = vec(mean(oosdevs,dims=2))
     (mincvmean,segCVmin) = findmin(cvmeans)
     mincvstds = std(view(oosdevs, segCVmin, :)) / sqrt(nfolds-1)
     mincvmean_plus_mincvstds = mincvmean + mincvstds
