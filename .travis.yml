@@ -13,12 +13,12 @@ git:
 matrix:
   allow_failures:
   - julia: nightly
-before_install:
-  - if [ `uname` = "Linux" ]; then
-      sudo apt-get install gfortran -y;
-    elif [ `uname` = "Darwin" ]; then
-      brew install gcc;
-    fi
+# before_install:
+#   - if [ `uname` = "Linux" ]; then
+#       sudo apt-get install gfortran -y;
+#     elif [ `uname` = "Darwin" ]; then
+#       brew install gcc;
+#     fi
 script:
   - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
   - julia --check-bounds=yes -e 'using Pkg; Pkg.clone(pwd()); Pkg.build("Lasso"); Pkg.test("Lasso"; coverage=true)'
