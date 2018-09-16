@@ -8,7 +8,7 @@ addons:
       - gfortran
   homebrew:
     packages:
-      - gcc
+      - gfortran
 julia:
   - 0.7
   - 1.0
