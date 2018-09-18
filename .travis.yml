@@ -14,7 +14,12 @@ matrix:
   allow_failures:
   - julia: nightly
 before_install:
-  - if [ $TRAVIS_OS_NAME = linux ]; then sudo apt-get install gfortran -y; else brew install --overwrite gcc; fi
+  - if [ $TRAVIS_OS_NAME = linux ]; then
+      sudo apt-get install gfortran -y;
+    else
+      brew cask uninstall oclint;
+      brew install gcc;
+    fi
 script:
   - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
   - julia --check-bounds=yes -e 'using Pkg; Pkg.clone(pwd()); Pkg.build("Lasso"); Pkg.test("Lasso"; coverage=true)'
