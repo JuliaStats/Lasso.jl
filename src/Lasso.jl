@@ -395,7 +395,7 @@ function StatsBase.aicc(path::RegularizationPath;k=2)
     broadcast((d,l)->infocrit(d,l,n,k), dfs, ls)
 end
 
-minAICc(path::RegularizationPath;k=2)=indmin(aicc(path;k=k))
+minAICc(path::RegularizationPath;k=2)=argmin(aicc(path;k=k))
 
 hasintercept(path::RegularizationPath) = hasintercept(path.m.pp)
 
