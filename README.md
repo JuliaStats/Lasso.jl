@@ -70,7 +70,9 @@ More documentation is available at [ReadTheDocs](http://lassojl.readthedocs.org/
 
 ## See also
 
- - [GLMNet.jl](https://github.com/simonster/GLMNet.jl), a wrapper for the
+ - [LassoPlot.jl](https://github.com/AsafManela/LassoPlot.jl), a package for
+   plotting regularization paths.
+ - [GLMNet.jl](https://github.com/JuliaStats/GLMNet.jl), a wrapper for the
    glmnet Fortran code.
  - [LARS.jl](https://github.com/simonster/LARS.jl), an implementation
    of least angle regression for fitting entire linear (but not
