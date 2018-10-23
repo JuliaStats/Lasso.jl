@@ -3,21 +3,25 @@ os:
   - linux
   - osx
 julia:
-  - 0.6
+  - 0.7
+  - 1.0
   - nightly
 notifications:
   email: false
+git:
+  depth: 99999999
 matrix:
   allow_failures:
   - julia: nightly
 before_install:
-  - if [ `uname` = "Linux" ]; then
+  - if [ $TRAVIS_OS_NAME = linux ]; then
       sudo apt-get install gfortran -y;
-    elif [ `uname` = "Darwin" ]; then
+    else
+      brew cask uninstall oclint;
       brew install gcc;
     fi
 script:
   - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
-  - if [ $TRAVIS_JULIA_VERSION = "0.6" ]; then julia --check-bounds=yes -e 'Pkg.clone(pwd()); Pkg.test("Lasso"; coverage=true)'; else julia -e 'Pkg.clone(pwd()); Pkg.test("Lasso")'; fi
+  - julia --check-bounds=yes -e 'using Pkg; Pkg.clone(pwd()); Pkg.build("Lasso"); Pkg.test("Lasso"; coverage=true)'
 after_success:
-  - if [ $TRAVIS_JULIA_VERSION = "0.6" ]; then julia -e 'cd(Pkg.dir("Lasso")); Pkg.add("Coverage"); using Coverage; Coveralls.submit(Coveralls.process_folder())'; fi
+  - julia -e 'using Pkg; cd(Pkg.dir("Lasso")); Pkg.add("Coverage"); using Coverage; Coveralls.submit(Coveralls.process_folder())';

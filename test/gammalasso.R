@@ -7,7 +7,7 @@ script.dir <- dirname(sys.frame(1)$ofile)
 testdata.dir <- paste0(script.dir,"/data")
 
 # uncomment to set manually
-# testdata.dir <- "~/.julia/v0.4/Lasso/test/data"
+# testdata.dir <- "~/.julia/v0.5/Lasso/test/data"
 
 setwd(testdata.dir)
 
@@ -29,6 +29,9 @@ pop.sd <- function(x) sqrt(pop.var(x))
 families <- list(gaussian(link="identity"),binomial(link="logit"),poisson(link="log"))
 randfuns <- list(rnorm,rbinom1,rpois)
 gammas <- c(0, 2, 10)
+penaltyfactors <- list(c(1, 1, 1), c(0, 1, 0.4), c(0.01, 1, 0.4))
+penaltyfactors[1]
+write.table(penaltyfactors,file = "penaltyfactors.csv", sep=",",row.names=FALSE,col.names=FALSE)
 
 for(f in 1:3) {
   # f <- 3
@@ -49,33 +52,38 @@ for(f in 1:3) {
   familyfilename <- paste0("gamlr.",family$family)
   write.table(data,file = paste0(familyfilename,".data.csv"), sep=",",row.names=FALSE,col.names=FALSE)
   
-  # export estimates
-  for(gamma in gammas) {
-    # AICc selection
-    fit <- gamlr(x, yp, gamma=gamma, lambda.min.ratio=1e-3, family=family$family, standardize = TRUE)
-    fitname <- paste0("gamma",gamma)
-    fitfilename <- paste0(familyfilename,".",fitname)
-    
-    fit$AICc <- AICc(fit)
-    fit$logLik <- logLik(fit)
-    fittable <- data.frame(fit$lambda,fit$df,fit$deviance,fit$alpha,fit$logLik,fit$AICc)
-    write.table(fittable,file = paste0(fitfilename,".fit.csv") ,sep=",",row.names=FALSE)
-    
-    coefs <- as.matrix(fit$beta)
-    write.table(coefs,file = paste0(fitfilename,".coefs.csv") ,sep=",",row.names=FALSE,col.names=FALSE)
-    
-    # now 10-fold cv
-    cvfit <- cv.gamlr(x, yp, gamma=gamma, lambda.min.ratio=1e-3, family=family$family, standardize = TRUE, nfold=10)
-
-    coefs_cvmin <- as.matrix(coef(cvfit,select="min"))
-    write.table(coefs_cvmin,file = paste0(fitfilename,".coefs.CVmin.csv") ,sep=",",row.names=FALSE,col.names=FALSE)
-    
-    coefs_cv1se <- as.matrix(coef(cvfit,select="1se"))
-    write.table(coefs_cv1se,file = paste0(fitfilename,".coefs.CV1se.csv") ,sep=",",row.names=FALSE,col.names=FALSE)
-
-    # both fit's params
-    params <- data.frame(fit$gamma,fit$family,cvfit$seg.min,cvfit$seg.1se,cvfit$lambda.min,cvfit$lambda.1se)
-    write.table(params,file = paste0(fitfilename,".params.csv") ,sep=",",row.names=FALSE)
-
-    }
+  for(pf in 1:3) {
+    penaltyfactor <- penaltyfactors[[pf]]
+      
+    # export estimates
+    for(gamma in gammas) {
+      # AICc selection
+      fit <- gamlr(x, yp, gamma=gamma, lambda.min.ratio=1e-3, family=family$family, varweight=penaltyfactor, standardize = TRUE)
+      fitname <- paste0("gamma",gamma,".pf",pf)
+      fitfilename <- paste0(familyfilename,".",fitname)
+      
+      fit$AICc <- AICc(fit)
+      fit$logLik <- logLik(fit)
+      fittable <- data.frame(fit$lambda,fit$df,fit$deviance,fit$alpha,fit$logLik,fit$AICc)
+      write.table(fittable,file = paste0(fitfilename,".fit.csv") ,sep=",",row.names=FALSE)
+      
+      coefs <- as.matrix(fit$beta)
+      write.table(coefs,file = paste0(fitfilename,".coefs.csv") ,sep=",",row.names=FALSE,col.names=FALSE)
+      
+      # now 10-fold cv
+      cvfit <- cv.gamlr(x, yp, gamma=gamma, lambda.min.ratio=1e-3, family=family$family, standardize = TRUE, nfold=10)
+  
+      coefs_cvmin <- as.matrix(coef(cvfit,select="min"))
+      write.table(coefs_cvmin,file = paste0(fitfilename,".coefs.CVmin.csv") ,sep=",",row.names=FALSE,col.names=FALSE)
+      
+      coefs_cv1se <- as.matrix(coef(cvfit,select="1se"))
+      write.table(coefs_cv1se,file = paste0(fitfilename,".coefs.CV1se.csv") ,sep=",",row.names=FALSE,col.names=FALSE)
+  
+      # both fit's params
+      params <- data.frame(fit$gamma,fit$family,cvfit$seg.min,cvfit$seg.1se,cvfit$lambda.min,cvfit$lambda.1se)
+      write.table(params,file = paste0(fitfilename,".params.csv") ,sep=",",row.names=FALSE)
+  
+      }
+  }
 }
+

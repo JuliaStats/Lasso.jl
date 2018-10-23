@@ -12,8 +12,8 @@ struct NormalCoefs{T}
     lin::T
     quad::T
 
-    NormalCoefs{T}(lin::S) where {T,S <: Real} = new(T(lin), zero(T))
-    NormalCoefs(lin::Real, quad::Real) = new(lin, quad)
+    NormalCoefs{T}(lin::Real) where {T} = new(lin, 0)
+    NormalCoefs{T}(lin::Real, quad::Real) where {T} = new(lin, quad)
 end
 +(a::NormalCoefs{T}, b::NormalCoefs{T}) where {T} = NormalCoefs{T}(a.lin+b.lin, a.quad+b.quad)
 -(a::NormalCoefs{T}, b::NormalCoefs{T}) where {T} = NormalCoefs{T}(a.lin-b.lin, a.quad-b.quad)
@@ -22,7 +22,7 @@ end
 *(a::Real, b::NormalCoefs{T}) where {T} = NormalCoefs{T}(a*b.lin, a*b.quad)
 
 # Implements Algorithm 2 lines 8 and 19
-solveforbtilde{T}(a::NormalCoefs{T}, lhs::Real) = (lhs - a.lin)/(2 * a.quad)
+solveforbtilde(a::NormalCoefs{T}, lhs::Real) where {T} = (lhs - a.lin)/(2 * a.quad)
 
 # These are marginally faster than computing btilde explicitly because
 # they avoid division
@@ -43,7 +43,7 @@ end
 
 function StatsBase.fit(::Type{FusedLasso}, y::AbstractVector{T}, λ::Real; dofit::Bool=true) where T
     S = NormalCoefs{T}
-    flsa = FusedLasso{T,S}(Vector{T}(length(y)), Vector{Knot{T,S}}(2), Matrix{T}(2, length(y)-1))
+    flsa = FusedLasso{T,S}(Array{T}(undef, length(y)), Array{Knot{T,S}}(undef, 2), Array{T}(undef, 2, length(y)-1))
     dofit && fit!(flsa, y, λ)
     flsa
 end
@@ -64,7 +64,7 @@ function StatsBase.fit!(flsa::FusedLasso{T,S}, y::AbstractVector{T}, λ::Real) w
         t1 = 0
         t2 = 0
         aminus = NormalCoefs{T}(y[k], -0.5)                # Algorithm 2 line 4
-        for t1 = 1:length(knots)-1                         # Algorithm 2 line 5
+        for outer t1 = 1:length(knots)-1                         # Algorithm 2 line 5
             knot = knots[t1]
             aminus += knot.sign*knot.coefs                 # Algorithm 2 line 6
             btilde_lt(aminus, λ, knots[t1+1].pos) && break # Algorithm 2 line 7-8
@@ -94,7 +94,7 @@ function StatsBase.fit!(flsa::FusedLasso{T,S}, y::AbstractVector{T}, λ::Real) w
                 deleteat!(knots, t2+2:length(knots))
             end
             if t1 == 1
-                unshift!(knots, Knot{T,S}(-Inf, S(0), 1))
+                pushfirst!(knots, Knot{T,S}(-Inf, S(0), 1))
             else
                 deleteat!(knots, 1:t1-2)
             end

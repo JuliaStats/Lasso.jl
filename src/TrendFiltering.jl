@@ -1,5 +1,6 @@
 module TrendFiltering
-using StatsBase, ..FusedLassoMod, ..Util
+using LinearAlgebra, SparseArrays, StatsBase, ..FusedLassoMod, ..Util
+using DSP: filt!
 import Base: +, -, *
 export TrendFilter
 
@@ -11,8 +12,8 @@ export TrendFilter
 struct DifferenceMatrix{T} <: AbstractMatrix{T}
     k::Int
     n::Int
-    b::Vector{T}                  # Coefficients for A_mul_B!
-    si::Vector{T}                 # State for A_mul_B!/At_mul_B!
+    b::Vector{T}                  # Coefficients for mul!
+    si::Vector{T}                 # State for mul!/At_mul_B!
 
     function DifferenceMatrix{T}(k, n) where T
         n >= 2*k+2 || throw(ArgumentError("signal must have length >= 2*order+2"))
@@ -24,9 +25,9 @@ end
 Base.size(K::DifferenceMatrix) = (K.n-K.k-1, K.n)
 
 # Multiply by difference matrix by filtering
-function Base.LinAlg.A_mul_B!(out::AbstractVector, K::DifferenceMatrix, x::AbstractVector, α::Real=1)
-    length(x) == size(K, 2) || throw(DimensionMismatch())
-    length(out) == size(K, 1) || throw(DimensionMismatch())
+function LinearAlgebra.mul!(out::AbstractVector, K::DifferenceMatrix, x::AbstractVector, α::Real=1)
+    length(x) == size(K, 2) || throw(DimensionMismatch("length(x) == $(length(x)) != $(size(K, 2)) == size(K, 2)"))
+    length(out) == size(K, 1) || throw(DimensionMismatch("length(x) == $(length(x)) != $(size(K, 1)) == size(K, 1)"))
     b = K.b
     si = fill!(K.si, 0)
     silen = length(b)-1
@@ -43,13 +44,13 @@ function Base.LinAlg.A_mul_B!(out::AbstractVector, K::DifferenceMatrix, x::Abstr
     end
     out
 end
-*(K::DifferenceMatrix, x::AbstractVector) = A_mul_B!(similar(x, size(K, 1)), K, x)
+*(K::DifferenceMatrix, x::AbstractVector) = mul!(similar(x, size(K, 1)), K, x)
 
-function Base.LinAlg.At_mul_B!(out::AbstractVector, K::DifferenceMatrix, x::AbstractVector, α::Real=1)
-    length(x) == size(K, 1) || throw(DimensionMismatch())
-    length(out) == size(K, 2) || throw(DimensionMismatch())
-    b = K.b
-    si = fill!(K.si, 0)
+function LinearAlgebra.mul!(out::AbstractVector, K::Adjoint{<:Any,<:DifferenceMatrix}, x::AbstractVector, α::Real=1)
+    length(x) == size(K.parent, 1) || throw(DimensionMismatch("length(x) == $(length(x)) != $(size(K.parent, 1)) == size(K.parent, 1)"))
+    length(out) == size(K.parent, 2) || throw(DimensionMismatch("length(out) == $(length(out)) != $(size(K.parent, 2)) == size(K.parent, 2)"))
+    b = K.parent.b
+    si = fill!(K.parent.si, 0)
     silen = length(b)-1
     isodd(silen) && (α = -α)
     n = length(x)
@@ -67,16 +68,16 @@ function Base.LinAlg.At_mul_B!(out::AbstractVector, K::DifferenceMatrix, x::Abst
     end
     out
 end
-Base.LinAlg.Ac_mul_B!(out::AbstractVector, K::DifferenceMatrix, x::AbstractVector, α::Real=1) = At_mul_B!(out, K, x)
-Base.LinAlg.At_mul_B(K::DifferenceMatrix, x::AbstractVector) = At_mul_B!(similar(x, size(K, 2)), K, x)
-Base.LinAlg.Ac_mul_B(K::DifferenceMatrix, x::AbstractVector) = At_mul_B!(similar(x, size(K, 2)), K, x)
+LinearAlgebra.mul!(out::AbstractVector, K::Hermitian{<:Any,<:DifferenceMatrix}, x::AbstractVector, α::Real=1) = mul!(out, K.parent', x)
+*(K::Adjoint{<:Any,<:DifferenceMatrix}, x::AbstractVector) = mul!(similar(x, size(K.parent, 2)), K, x)
+*(K::Hermitian{<:Any,<:DifferenceMatrix}, x::AbstractVector) = mul!(similar(x, size(K.parent, 2)), K.parent', x)
 
 # Product with self, efficiently
-function Base.LinAlg.At_mul_B(K::DifferenceMatrix, K2::DifferenceMatrix)
-    K === K2 || error("matrix multiplication only supported with same difference matrix")
-    computeDtD(K.b, K.n)
+function *(K::Adjoint{<:Any,<:DifferenceMatrix}, K2::DifferenceMatrix)
+    K.parent === K2 || error("matrix multiplication only supported with same difference matrix")
+    computeDtD(K.parent.b, K.parent.n)
 end
-Base.LinAlg.Ac_mul_B(K::DifferenceMatrix, K2::DifferenceMatrix) = At_mul_B(K::DifferenceMatrix, K2::DifferenceMatrix)
+*(K::Hermitian{<:Any,<:DifferenceMatrix}, K2::DifferenceMatrix) = *(K.parent, K2::DifferenceMatrix)
 
 function computeDtD(c, n)
     k = length(c) - 2
@@ -93,9 +94,9 @@ function computeDtD(c, n)
         end
     end
     filt!(sides, c, [one(eltype(c))], sides)
-    colptr = Vector{Int}(n+1)
-    rowval = Vector{Int}((k+2)*(n-k-1)+(k+1)*n)
-    nzval = Vector{Float64}((k+2)*(n-k-1)+(k+1)*n)
+    colptr = Vector{Int}(undef, n+1)
+    rowval = Vector{Int}(undef, (k+2)*(n-k-1)+(k+1)*n)
+    nzval = Vector{Float64}(undef, (k+2)*(n-k-1)+(k+1)*n)
     idx = 1
     for i = 1:k+1
         colptr[i] = idx
@@ -150,7 +151,7 @@ mutable struct TrendFilter{T,S,VT}
     niter::Int                               # Number of ADMM iterations
 end
 
-function StatsBase.fit{T}(::Type{TrendFilter}, y::AbstractVector{T}, order, λ; dofit::Bool=true, args...)
+function StatsBase.fit(::Type{TrendFilter}, y::AbstractVector{T}, order, λ; dofit::Bool=true, args...) where T
     order >= 1 || throw(ArgumentError("order must be >= 1"))
     Dkp1 = DifferenceMatrix{T}(order, length(y))
     Dk = DifferenceMatrix{T}(order-1, length(y))
@@ -163,7 +164,7 @@ function StatsBase.fit{T}(::Type{TrendFilter}, y::AbstractVector{T}, order, λ; 
     return tf
 end
 
-function StatsBase.fit!{T}(tf::TrendFilter{T}, y::AbstractVector{T}, λ::Real; niter=100000, tol=1e-6, ρ=λ)
+function StatsBase.fit!(tf::TrendFilter{T}, y::AbstractVector{T}, λ::Real; niter=100000, tol=1e-6, ρ=λ) where T
     @extractfields tf Dkp1 Dk DktDk β u Dkβ Dkp1β flsa
     length(y) == length(β) || throw(ArgumentError("input size $(length(y)) does not match model size $(length(β))"))
 
@@ -171,26 +172,26 @@ function StatsBase.fit!{T}(tf::TrendFilter{T}, y::AbstractVector{T}, λ::Real; n
     ρDtαu = β
     αpu = Dkβ
 
-    fact = cholfact(speye(size(Dk, 2)) + ρ*DktDk)
+    fact = cholesky(sparse(1.0I, size(Dk, 2), size(Dk, 2)) + ρ*DktDk)
     α = coef(flsa)
     fill!(α, 0)
 
     oldobj = obj = Inf
     local iter
-    for iter = 1:niter
+    for outer iter = 1:niter
         # Eq. 11 (update β)
         broadcast!(+, αpu, α, u)
-        At_mul_B!(ρDtαu, Dk, αpu, ρ)
+        mul!(ρDtαu, Dk', αpu, ρ)
         β = fact\broadcast!(+, ρDtαu, ρDtαu, y)
 
         # Check for convergence
-        A_mul_B!(Dkp1β, Dkp1, β)
+        mul!(Dkp1β, Dkp1, β)
         oldobj = obj
         obj = sumsqdiff(y, β)/2 + λ*sum(abs, Dkp1β)
         abs(oldobj - obj) < abs(obj * tol) && break
 
         # Eq. 12 (update α)
-        A_mul_B!(Dkβ, Dk, β)
+        mul!(Dkβ, Dk, β)
         broadcast!(-, u, Dkβ, u)
         fit!(flsa, u, λ/ρ)
 

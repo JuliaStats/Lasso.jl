@@ -5,13 +5,13 @@ using MLBase
 # which chooses λt at lowest mean OOS deviance.
 
 function CVmin(oosdevs)
-    cvmeans = mean(oosdevs,2)
-    segCVmin = indmin(cvmeans)
+    cvmeans = mean(oosdevs,dims=2)
+    segCVmin = argmin(cvmeans)
 end
 
 function CV1se(oosdevs)
     nλ,nfolds = size(oosdevs)
-    cvmeans = vec(mean(oosdevs,2))
+    cvmeans = vec(mean(oosdevs,dims=2))
     (mincvmean,segCVmin) = findmin(cvmeans)
     mincvstds = std(view(oosdevs, segCVmin, :)) / sqrt(nfolds-1)
     mincvmean_plus_mincvstds = mincvmean + mincvstds
@@ -38,12 +38,12 @@ end
 pathtype(::LassoPath) = LassoPath
 pathtype(::GammaLassoPath) = GammaLassoPath
 
-function cross_validate_path{T<:AbstractFloat,V<:FPVector}(path::RegularizationPath,    # fitted path
-                                                     X::AbstractMatrix{T}, y::V;        # potentially new data
-                                                     gen=Kfold(length(y),10),           # folds generator (see MLBase)
-                                                     select=:CVmin,                     # :CVmin or :CV1se
-                                                     offset::FPVector=T[],
-                                                     fitargs...)
+function cross_validate_path(path::RegularizationPath,    # fitted path
+                       X::AbstractMatrix{T}, y::V;        # potentially new data
+                       gen=Kfold(length(y),10),           # folds generator (see MLBase)
+                       select=:CVmin,                     # :CVmin or :CV1se
+                       offset::FPVector=T[],
+                       fitargs...) where {T<:AbstractFloat,V<:FPVector}
     @extractfields path m λ
     n,p = size(X)
     @assert n == length(y) "size(X,1) != length(y)"

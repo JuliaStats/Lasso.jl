@@ -3,7 +3,7 @@ using MLBase
 datapath = joinpath(dirname(@__FILE__), "..","test","data")
 
 (family, dist, link) = (("gaussian", Normal(), IdentityLink()), ("binomial", Binomial(), LogitLink()), ("poisson", Poisson(), LogLink()))[1]
-data = readcsv(joinpath(datapath,"gamlr.$family.data.csv"))
+data = readcsvmat(joinpath(datapath,"gamlr.$family.data.csv"))
 y = data[:,1]
 X = data[:,2:end]
 (n,p) = size(X)
@@ -24,9 +24,9 @@ path = glp
 plot(path)
 
 @time coefsAICc = coef(path;select=:AICc)
-srand(13)
+Random.seed!(13)
 @time coefsCVmin = coef(path;select=:CVmin)
-srand(13)
+Random.seed!(13)
 @time coefsCV1se = coef(path;select=:CV1se,nCVfolds=100)
 # fieldnames(path.m.pp)
 # y == path.m.rr.y
@@ -43,13 +43,13 @@ ix=1:length(y)
 
 # plot(path)
 
-srand(13); gen = Kfold(length(y[ix]),10)
+Random.seed!(13); gen = Kfold(length(y[ix]),10)
 @time segCVmin = cross_validate_path(path;gen=gen)
 
-srand(13); gen = Kfold(length(y[ix]),10)
+Random.seed!(13); gen = Kfold(length(y[ix]),10)
 @time segCVmin = cross_validate_path(path,X[ix,:],y[ix];offset=offset[ix],gen=gen)
 
-srand(13); gen = Kfold(length(y[ix]),10)
+Random.seed!(13); gen = Kfold(length(y[ix]),10)
 @time segCV1se = cross_validate_path(path,X[ix,:],y[ix];select=:CV1se,gen=gen,offset=offset[ix])
 
 λCVmin = path.λ[segCVmin]

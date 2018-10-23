@@ -24,6 +24,12 @@ Ramdas, A., & Tibshirani, R. J. (2014). Fast and flexible ADMM
 algorithms for trend filtering. arXiv Preprint arXiv:1406.2082.
 Retrieved from http://arxiv.org/abs/1406.2082
 
+Also implements the Gamma Lasso, a concave regularization path glmnet variant:
+Taddy, M. (2017) One-Step Estimator Paths for Concave Regularization
+Journal of Computational and Graphical Statistics, 26:3, 525-536
+http://dx.doi.org/10.1080/10618600.2016.1211532
+
+
 ## Quick start
 
 To fit a Lasso path with default parameters:
@@ -46,18 +52,27 @@ To fit a polynomial trend filtering model:
 ```julia
 fit(TrendFilter, y, order, λ)
 ```
+To fit a Gamma Lasso path:
+
+```julia
+fit(GammaLassoPath, X, y, dist, link; γ=1.0)
+```
+It supports the same parameters as fit(LassoPath...), plus γ which controls
+the concavity of the regularization path. γ=0.0 is the Lasso. Higher values
+tend to result in sparser coefficient estimates.
 
 More documentation is available at [ReadTheDocs](http://lassojl.readthedocs.org/en/latest/).
 
 ## TODO
 
  - User-specified weights are untested
- - Support unpenalized variables besides the intercept
  - Maybe integrate LARS.jl
 
 ## See also
 
- - [GLMNet.jl](https://github.com/simonster/GLMNet.jl), a wrapper for the
+ - [LassoPlot.jl](https://github.com/AsafManela/LassoPlot.jl), a package for
+   plotting regularization paths.
+ - [GLMNet.jl](https://github.com/JuliaStats/GLMNet.jl), a wrapper for the
    glmnet Fortran code.
  - [LARS.jl](https://github.com/simonster/LARS.jl), an implementation
    of least angle regression for fitting entire linear (but not

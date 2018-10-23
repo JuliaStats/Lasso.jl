@@ -1,14 +1,14 @@
 module Benchmark
-using Lasso, GLMNet, BenchmarkLite, Distributions
+using Lasso, LinearAlgebra, GLMNet, BenchmarkLite, Distributions
 
 # As in Friedman et al., generate random X and Y matrix such that SNR=3
 function makeXY(ρ, nsamples, nfeatures)
     Σ = fill(ρ, nfeatures, nfeatures)
     Σ[diagind(Σ)] = 1
-    X = rand(MvNormal(Σ), nsamples)'
+    X = permutedims(rand(MvNormal(Σ), nsamples))
     β = [(-1)^j*exp(-2*(j-1)/20) for j = 1:nfeatures]
     signal = (β'*Σ*β)[1]
-    y = X*β + scale!(randn(nsamples), sqrt(signal/3))
+    y = X*β + lmul!(Diagonal(randn(nsamples)), sqrt(signal/3))
     # @show uvar = var(y - X*(X\y))
     # @show evar = var(y - mean(y)) - uvar
     # @show evar/uvar
@@ -16,17 +16,17 @@ function makeXY(ρ, nsamples, nfeatures)
 end
 
 mutable struct GLMNetOp{Dist,Naive} end
-calc{Dist,Naive}(::GLMNetOp{Dist,Naive}, X, y) = glmnet(X, y, Dist(), naivealgorithm=Naive)
+calc(::GLMNetOp{Dist,Naive}, X, y) where {Dist,Naive} = glmnet(X, y, Dist(), naivealgorithm=Naive)
 calc(::GLMNetOp{Binomial}, X, y) = glmnet(X, y, Binomial())
 
 mutable struct LassoOp{Dist,Naive} end
-calc{Dist,Naive}(::LassoOp{Dist,Naive}, X, y) = fit(LassoPath, X, y, Dist(), naivealgorithm=Naive, criterion=:coef)
+calc(::LassoOp{Dist,Naive}, X, y) where {Dist,Naive} = fit(LassoPath, X, y, Dist(), naivealgorithm=Naive, criterion=:coef)
 
 mutable struct LassoBenchmark{Op} <: Proc end
 Base.length(p::LassoBenchmark, n) = 0
 Base.isvalid(p::LassoBenchmark, n) = true
 Base.start(p::LassoBenchmark, n) = (gc(); inputs[n])
-function Base.start{Naive}(p::LassoBenchmark{GLMNetOp{Binomial,Naive}}, n)
+function Base.start(p::LassoBenchmark{GLMNetOp{Binomial,Naive}}, n) where Naive
     X, y = inputs[n]
     yp = zeros(length(y), 2)
     yp[:, 1] = y .== 0
@@ -34,12 +34,12 @@ function Base.start{Naive}(p::LassoBenchmark{GLMNetOp{Binomial,Naive}}, n)
     gc()
     (X, yp)
 end
-Base.run{Op}(p::LassoBenchmark{Op}, n, s) =
+Base.run(p::LassoBenchmark{Op}, n, s) where {Op} =
     calc(Op(), s[1], s[2])
 Base.done(p::LassoBenchmark, n, s) = true
 
-Base.string{Dist,Naive}(p::LassoBenchmark{GLMNetOp{Dist,Naive}}) = "glmnet $(Dist.name.name) $(Naive ? "naive" : "cov")"
-Base.string{Dist,Naive}(p::LassoBenchmark{LassoOp{Dist,Naive}}) = "Lasso.jl $(Dist.name.name) $(Naive ? "naive" : "cov")"
+Base.string(p::LassoBenchmark{GLMNetOp{Dist,Naive}}) where {Dist,Naive} = "glmnet $(Dist.name.name) $(Naive ? "naive" : "cov")"
+Base.string(p::LassoBenchmark{LassoOp{Dist,Naive}}) where {Dist,Naive} = "Lasso.jl $(Dist.name.name) $(Naive ? "naive" : "cov")"
 
 inputs = Dict{(Float64, Int, Int),(Matrix{Float64},Vector{Float64})}()
 cfgs = vec([begin

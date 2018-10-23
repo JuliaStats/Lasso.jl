@@ -1,6 +1,7 @@
-julia 0.6
-StatsBase 0.8
+julia 0.7
+StatsBase
 Distributions
-GLM 0.10.1
+GLM
 Reexport
 MLBase
+DSP

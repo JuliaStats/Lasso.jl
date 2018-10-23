@@ -1,5 +1,4 @@
 module Lasso
-using StatsBase
 module Util
     # Extract fields from object into function locals
     # See https://github.com/JuliaLang/julia/issues/9755
@@ -9,13 +8,13 @@ module Util
     export @extractfields
 end
 
-import Base.LinAlg.BlasReal
 include("FusedLasso.jl")
 include("TrendFiltering.jl")
 
-using Reexport, StatsBase, .Util, MLBase
+using Reexport, LinearAlgebra, SparseArrays, Random, .Util, MLBase
+import Random: Sampler
 @reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
-using GLM.FPVector
+using GLM: FPVector
 export RegularizationPath, LassoPath, GammaLassoPath, NaiveCoordinateDescent,
        CovarianceCoordinateDescent, fit, fit!, coef, predict,
        minAICc, hasintercept, df, aicc, distfun, linkfun, cross_validate_path
@@ -31,7 +30,7 @@ struct SparseCoefficients{T} <: AbstractVector{T}
     SparseCoefficients{T}(n::Int) where {T} = new(T[], Int[], zeros(Int, n))
 end
 
-function Base.A_mul_B!{T}(out::Vector, X::Matrix, coef::SparseCoefficients{T})
+function LinearAlgebra.mul!(out::Vector, X::Matrix, coef::SparseCoefficients{T}) where T
     fill!(out, zero(eltype(out)))
     @inbounds for icoef = 1:nnz(coef)
         ipred = coef.coef2predictor[icoef]
@@ -43,7 +42,7 @@ function Base.A_mul_B!{T}(out::Vector, X::Matrix, coef::SparseCoefficients{T})
     out
 end
 
-function Base.A_mul_B!{T}(out::Vector, X::SparseMatrixCSC, coef::SparseCoefficients{T})
+function LinearAlgebra.mul!(out::Vector, X::SparseMatrixCSC, coef::SparseCoefficients{T}) where T
     @extractfields X colptr rowval nzval
     fill!(out, zero(eltype(out)))
     @inbounds for icoef = 1:nnz(coef)
@@ -56,7 +55,7 @@ function Base.A_mul_B!{T}(out::Vector, X::SparseMatrixCSC, coef::SparseCoefficie
     out
 end
 
-function Base.dot{T}(x::Vector{T}, coef::SparseCoefficients{T})
+function LinearAlgebra.dot(x::Vector{T}, coef::SparseCoefficients{T}) where T
     v = 0.0
     @inbounds @simd for icoef = 1:nnz(coef)
         v += x[coef.coef2predictor[icoef]]*coef.coef[icoef]
@@ -65,11 +64,11 @@ function Base.dot{T}(x::Vector{T}, coef::SparseCoefficients{T})
 end
 
 Base.size(x::SparseCoefficients) = (length(x.predictor2coef),)
-Base.nnz(x::SparseCoefficients) = length(x.coef)
-Base.getindex{T}(x::SparseCoefficients{T}, ipred::Int) =
+SparseArrays.nnz(x::SparseCoefficients) = length(x.coef)
+Base.getindex(x::SparseCoefficients{T}, ipred::Int) where {T} =
     x.predictor2coef[ipred] == 0 ? zero(T) : x.coef[x.predictor2coef[ipred]]
 
-function Base.setindex!{T}(A::Matrix{T}, coef::SparseCoefficients, rg::UnitRange{Int}, i::Int)
+function Base.setindex!(A::Matrix{T}, coef::SparseCoefficients, rg::UnitRange{Int}, i::Int) where T
     A[:, i] = zero(T)
     for icoef = 1:nnz(coef)
         A[rg[coef.coef2predictor[icoef]], i] = coef.coef[icoef]
@@ -77,19 +76,19 @@ function Base.setindex!{T}(A::Matrix{T}, coef::SparseCoefficients, rg::UnitRange
     A
 end
 
-function Base.copy!(x::SparseCoefficients, y::SparseCoefficients)
+function Base.copyto!(x::SparseCoefficients, y::SparseCoefficients)
     length(x) == length(y) || throw(DimensionMismatch())
     n = length(y.coef)
     resize!(x.coef, n)
     resize!(x.coef2predictor, n)
-    copy!(x.coef, y.coef)
-    copy!(x.coef2predictor, y.coef2predictor)
-    copy!(x.predictor2coef, y.predictor2coef)
+    copyto!(x.coef, y.coef)
+    copyto!(x.coef2predictor, y.coef2predictor)
+    copyto!(x.predictor2coef, y.predictor2coef)
     x
 end
 
 # Add a new coefficient to x, returning its index in x.coef
-function addcoef!{T}(x::SparseCoefficients{T}, ipred::Int)
+function addcoef!(x::SparseCoefficients{T}, ipred::Int) where T
     push!(x.coef, zero(T))
     push!(x.coef2predictor, ipred)
     coefindex = nnz(x)
@@ -116,39 +115,43 @@ function addcoefs!(coefs::SparseMatrixCSC, newcoef::SparseCoefficients, i::Int)
     end
     resize!(nzval, n)
     resize!(rowval, n)
-    coefs.colptr[i+1:end] = n+1
+    coefs.colptr[i+1:end] .= n+1
 end
 
 ## COEFFICIENT ITERATION IN SEQUENTIAL OR RANDOM ORDER
 struct RandomCoefficientIterator
     rng::MersenneTwister
-    rg::Base.Random.RangeGeneratorInt{Int,UInt}
+    rg::Sampler
     coeforder::Vector{Int}
 end
 const RANDOMIZE_DEFAULT = true
 
-RandomCoefficientIterator() =
-    RandomCoefficientIterator(MersenneTwister(1337), Base.Random.RangeGenerator(1:2), Int[])
+function RandomCoefficientIterator()
+    rng = MersenneTwister(1337)
+    RandomCoefficientIterator(rng, Sampler(rng, 1:2), Int[])
+end
 
 const CoefficientIterator = Union{UnitRange{Int},RandomCoefficientIterator}
 
 # Iterate over coefficients in random order
-function Base.start(x::RandomCoefficientIterator)
+function Base.iterate(x::RandomCoefficientIterator)
     if !isempty(x.coeforder)
         @inbounds for i = length(x.coeforder):-1:2
             j = rand(x.rng, x.rg)
             x.coeforder[i], x.coeforder[j] = x.coeforder[j], x.coeforder[i]
         end
+        x.coeforder[1], 2
+    else
+        nothing
     end
-    return 1
 end
-Base.next(x::RandomCoefficientIterator, i) = (x.coeforder[i], i += 1)
-Base.done(x::RandomCoefficientIterator, i) = i > length(x.coeforder)
+
+Base.iterate(x::RandomCoefficientIterator, i) = (i > length(x.coeforder)) ? nothing : (x.coeforder[i], i += 1)
 
 # Add an additional coefficient and return a new CoefficientIterator
 function addcoef(x::RandomCoefficientIterator, icoef::Int)
     push!(x.coeforder, icoef)
-    RandomCoefficientIterator(x.rng, Base.Random.RangeGenerator(1:length(x.coeforder)), x.coeforder)
+    RandomCoefficientIterator(x.rng, Sampler(x.rng, 1:length(x.coeforder)), x.coeforder)
 end
 addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
 
@@ -173,7 +176,8 @@ end
 
 function Base.show(io::IO, path::RegularizationPath)
     prefix = isa(path.m, GeneralizedLinearModel) ? string(typeof(distfun(path)).name.name, " ") : ""
-    println(io, "$(prefix)$(typeof(path).name.name) ($(size(path.coefs, 2)) solutions for $(size(path.coefs, 1)) predictors in $(path.niter) iterations):")
+    pathsize = size(path)
+    println(io, "$(prefix)$(typeof(path).name.name) ($(pathsize[2])) solutions for $(pathsize[1]) predictors in $(path.niter) iterations):")
 
     if isdefined(path, :coefs)
         coefs = path.coefs
@@ -195,14 +199,14 @@ const MIN_DEV_FRAC_DIFF = 1e-5
 const MAX_DEV_FRAC = 0.999
 
 # Compute automatic λ values based on X'y and λminratio
-function computeλ(Xy, λminratio, α, nλ, ω::Union{Vector,Void})
+function computeλ(Xy, λminratio, α, nλ, ω::Union{Vector,Nothing})
     λmax = abs(Xy[1])
-    if !isa(ω, Void)
+    if !isa(ω, Nothing) && ω[1] > 0
         λmax /= ω[1]
     end
     for i = 2:length(Xy)
         x = abs(Xy[i])
-        if !isa(ω, Void)
+        if !isa(ω, Nothing) && ω[i] > 0
             x /= ω[i]
         end
         if x > λmax
@@ -211,16 +215,16 @@ function computeλ(Xy, λminratio, α, nλ, ω::Union{Vector,Void})
     end
     λmax /= α
     logλmax = log(λmax)
-    λ = exp.(linspace(logλmax, logλmax + log(λminratio), nλ))
+    λ = exp.(range(logλmax, stop=logλmax + log(λminratio), length=nλ))
 end
 
 # rescales A so that it sums to base
 rescale(A, base) = A * (base / sum(A))
 
-function build_model{T}(X::AbstractMatrix{T}, y::FPVector, d::Normal, l::IdentityLink,
-                        lp::LinPred, λminratio::Real, λ::Union{Vector,Void},
-                        wts::Union{FPVector,Void}, offset::Vector, α::Real, nλ::Int,
-                        ω::Union{Vector, Void}, intercept::Bool, irls_tol::Real)
+function build_model(X::AbstractMatrix{T}, y::FPVector, d::Normal, l::IdentityLink,
+                     lp::LinPred, λminratio::Real, λ::Union{Vector,Nothing},
+                     wts::Union{FPVector,Nothing}, offset::Vector, α::Real, nλ::Int,
+                     ω::Union{Vector, Nothing}, intercept::Bool, irls_tol::Real, dofit::Bool) where T
     # Special no-IRLS case
     mu = isempty(offset) ? y : y + offset
     nullb0 = intercept ? mean(mu, weights(wts)) : zero(T)
@@ -232,7 +236,7 @@ function build_model{T}(X::AbstractMatrix{T}, y::FPVector, d::Normal, l::Identit
     if λ == nothing
         # Find max λ
         if intercept
-            muscratch = Vector{T}(length(mu))
+            muscratch = Vector{T}(undef, length(mu))
             @simd for i = 1:length(mu)
                 @inbounds muscratch[i] = (mu[i] - nullb0)*wts[i]
             end
@@ -250,28 +254,26 @@ function build_model{T}(X::AbstractMatrix{T}, y::FPVector, d::Normal, l::Identit
     (model, nulldev, nullb0, λ)
 end
 
-function build_model{T}(X::AbstractMatrix{T}, y::FPVector, d::UnivariateDistribution, l::Link,
-                        lp::LinPred, λminratio::Real, λ::Union{Vector,Void},
-                        wts::Union{FPVector,Void}, offset::Vector, α::Real, nλ::Int,
-                        ω::Union{Vector, Void}, intercept::Bool, irls_tol::Real)
+function build_model(X::AbstractMatrix{T}, y::FPVector, d::UnivariateDistribution, l::Link,
+                     lp::LinPred, λminratio::Real, λ::Union{Vector,Nothing},
+                     wts::Union{FPVector,Nothing}, offset::Vector, α::Real, nλ::Int,
+                     ω::Union{Vector, Nothing}, intercept::Bool, irls_tol::Real, dofit::Bool) where T
     # Fit to find null deviance
     # Maybe we should reuse this GlmResp object?
     nullmodel = fit(GeneralizedLinearModel, ones(T, length(y), ifelse(intercept, 1, 0)), y, d, l;
-                    wts=wts, offset=offset, convTol=irls_tol)
+                    wts=wts, offset=offset, convTol=irls_tol, dofit=dofit)
     nulldev = deviance(nullmodel)
+    nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
 
     if λ == nothing
         # Find max λ
         Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwt)
         λ = computeλ(Xy, λminratio, α, nλ, ω)
-        nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
     else
         λ = convert(Vector{T}, λ)
-        nullb0 = zero(T)
     end
 
-    eta = GLM.initialeta!(d, l, similar(y), y, wts, offset)
-    rr = GlmResp(y, d, l, eta, similar(eta), offset, wts)
+    rr = GlmResp(y, d, l, offset, wts)
     model = GeneralizedLinearModel(rr, lp, false)
 
     (model, nulldev, nullb0, λ)
@@ -280,36 +282,40 @@ end
 defaultalgorithm(d::Normal, l::IdentityLink, n::Int, p::Int) = p > 5n ? NaiveCoordinateDescent : CovarianceCoordinateDescent
 defaultalgorithm(d::UnivariateDistribution, l::Link, n::Int, p::Int) = NaiveCoordinateDescent
 
-function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
-                                                     X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
-                                                     l::Link=canonicallink(d);
-                                                     wts::Union{FPVector,Void}=ones(T, length(y)),
-                                                     offset::V=similar(y, 0),
-                                                     α::Number=one(eltype(y)), nλ::Int=100,
-                                                     λminratio::Number=ifelse(size(X, 1) < size(X, 2), 0.01, 1e-4),
-                                                     λ::Union{Vector,Void}=nothing, standardize::Bool=true,
-                                                     intercept::Bool=true,
-                                                     algorithm::Type=defaultalgorithm(d, l, size(X, 1), size(X, 2)),
-                                                     dofit::Bool=true,
-                                                     irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
-                                                     maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
-                                                     penalty_factor::Union{Vector,Void}=nothing,
-                                                     fitargs...)
+# following glmnet rescale penalty factors to sum to the number of coefficients
+initpenaltyfactor(penalty_factor::Nothing,p::Int) = nothing
+initpenaltyfactor(penalty_factor::Vector,p::Int) = rescale(penalty_factor, p)
+
+function StatsBase.fit(::Type{LassoPath},
+                       X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
+                       l::Link=canonicallink(d);
+                       wts::Union{FPVector,Nothing}=ones(T, length(y)),
+                       offset::V=similar(y, 0),
+                       α::Number=one(eltype(y)), nλ::Int=100,
+                       λminratio::Number=ifelse(size(X, 1) < size(X, 2), 0.01, 1e-4),
+                       λ::Union{Vector,Nothing}=nothing, standardize::Bool=true,
+                       intercept::Bool=true,
+                       algorithm::Type=defaultalgorithm(d, l, size(X, 1), size(X, 2)),
+                       dofit::Bool=true,
+                       irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
+                       maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
+                       penalty_factor::Union{Vector,Nothing}=nothing,
+                       fitargs...) where {T<:AbstractFloat,V<:FPVector}
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
     n = length(y)
     length(wts) == n || error("length(wts) = $(length(wts)) should be 0 or $n")
 
     # Standardize predictors if requested
     if standardize
-        Xnorm = vec(full(std(X, 1, corrected=false)))
-        if any(x -> x == zero(T), Xnorm) 
-            warn("""One of the predicators (columns of X) is a constant, so it can not be standardized. 
-                  To include a constant predicator set standardize = false and intercept = false""") 
+        Xnorm = vec(convert(Matrix{T},std(X; dims=1, corrected=false)))
+        if any(x -> x == zero(T), Xnorm)
+            warn("""One of the predicators (columns of X) is a constant, so it can not be standardized.
+                  To include a constant predicator set standardize = false and intercept = false""")
         end
         for i = 1:length(Xnorm)
             @inbounds Xnorm[i] = 1/Xnorm[i]
         end
-        X = X .* Xnorm.'
+        X = X .* transpose(Xnorm)
     else
         Xnorm = T[]
     end
@@ -320,18 +326,14 @@ function StatsBase.fit{T<:AbstractFloat,V<:FPVector}(::Type{LassoPath},
     coefitr = randomize ? RandomCoefficientIterator() : (1:0)
 
     # penalty_factor (ω) defaults to a vector of ones
-    ω = penalty_factor
-    if !isa(ω, Void)
-        # following glmnet rescale penalty factors to sum to the number of coefficients
-        ω = rescale(ω, size(X, 2))
-    end
+    ω = initpenaltyfactor(penalty_factor,size(X, 2))
 
     cd = algorithm{T,intercept,typeof(X),typeof(coefitr),typeof(ω)}(X, α, maxncoef, 1e-7, coefitr, ω)
 
     # GLM response initialization
     autoλ = λ == nothing
     model, nulldev, nullb0, λ = build_model(X, y, d, l, cd, λminratio, λ, wts .* T(1/sum(wts)),
-                                            Vector{T}(offset), α, nλ, ω, intercept, irls_tol)
+                                            Vector{T}(offset), α, nλ, ω, intercept, irls_tol, dofit)
 
     # Fit path
     path = LassoPath{typeof(model),T}(model, nulldev, nullb0, λ, autoλ, Xnorm)
@@ -372,33 +374,67 @@ function StatsBase.df(path::RegularizationPath)
 
     if dispersion_parameter(path)
         # add one for dispersion_parameter
-        dof+=1
+        dof.+=1
     end
 
     dof
 end
 
-function StatsBase.aicc(path::RegularizationPath;k=2)
-    d = df(path)
-    n = nobs(path)
-    ic = -2loglikelihood(path) + k*d + k*d.*(d+1)./(n-d-1)
-    ic[d.+1 .> n] = realmax(eltype(ic))
-    ic
+function infocrit(d::T,l::F,n,k) where {T,F}
+    if d + one(T) > n
+        floatmax(F)
+    else
+        -2l + (k*d + k*d*(d+1)/(n-d-1))
+    end
 end
 
-minAICc(path::RegularizationPath;k=2)=indmin(aicc(path;k=k))
+function StatsBase.aicc(path::RegularizationPath;k=2)
+    dfs = df(path)
+    ls = loglikelihood(path)
+    n = nobs(path)
+    broadcast((d,l)->infocrit(d,l,n,k), dfs, ls)
+end
+
+minAICc(path::RegularizationPath;k=2)=argmin(aicc(path;k=k))
 
 hasintercept(path::RegularizationPath) = hasintercept(path.m.pp)
 
-#Consistent with StatsBase.coef, if the model has an intercept it is included.
+"""
+size(path) returns (p,nλ) where p is the number of coefficients (including
+any intercept) and nλ is the number of path segments.
+If model was only initialized but not fit, returns (p,1).
+"""
+function Base.size(path::RegularizationPath)
+  if isdefined(path,:coefs)
+    p,nλ = size(path.coefs)
+  else
+    X = path.m.pp.X
+    p = size(X,2)
+    nλ = 1
+  end
+
+  if hasintercept(path)
+    p += 1
+  end
+
+  p,nλ
+end
+
+"""
+coef(path) returns a p by nλ coefficient array where p is the number of
+coefficients (including any intercept) and nλ is the number of path segments.
+If model was only initialized but not fit, returns a p vector of zeros.
+Consistent with StatsBase.coef, if the model has an intercept it is included.
+"""
 function StatsBase.coef(path::RegularizationPath; select=:all, nCVfolds=10)
     if !isdefined(path,:coefs)
         X = path.m.pp.X
-        p = size(X,2)
-        if hasintercept(path)
-            p+=1
+        p,nλ = size(path)
+        if select == :all
+            return zeros(eltype(X),p,nλ)
+        else
+            return zeros(eltype(X),p)
         end
-        return zeros(eltype(X),p)
     end
 
     if select == :all
@@ -427,8 +463,8 @@ function StatsBase.coef(path::RegularizationPath; select=:all, nCVfolds=10)
 end
 
 "link of underlying GLM"
-GLM.linkfun{M<:LinearModel}(path::RegularizationPath{M}) = IdentityLink()
-GLM.linkfun{V<:FPVector,D<:UnivariateDistribution,L<:Link,L2<:GLM.LinPred}(path::RegularizationPath{GeneralizedLinearModel{GlmResp{V,D,L},L2}}) = L()
+GLM.linkfun(path::RegularizationPath{M}) where {M<:LinearModel} = IdentityLink()
+GLM.linkfun(path::RegularizationPath{GeneralizedLinearModel{GlmResp{V,D,L},L2}}) where {V<:FPVector,D<:UnivariateDistribution,L<:Link,L2<:GLM.LinPred} = L()
 
 ## Prediction function for GLMs
 function StatsBase.predict(path::RegularizationPath, newX::AbstractMatrix{T}; offset::FPVector=T[], select=:all) where {T<:AbstractFloat}
@@ -462,7 +498,7 @@ function StatsBase.predict(path::RegularizationPath, newX::AbstractMatrix{T}; of
 end
 
 "distribution of underlying GLM"
-distfun{M<:LinearModel}(path::RegularizationPath{M}) = Normal()
+distfun(path::RegularizationPath{M}) where {M<:LinearModel} = Normal()
 distfun(path::RegularizationPath) = path.m.rr.d
 
 "deviance at each segment of the path for the fitted model and data"
@@ -472,9 +508,9 @@ StatsBase.deviance(path::RegularizationPath) = (1 .- path.pct_dev) .* path.nulld
 deviance at each segement of the path for (potentially new) data X and y
 select=:all or :AICc like in coef()
 """
-function StatsBase.deviance{T<:AbstractFloat,V<:FPVector}(path::RegularizationPath, X::AbstractMatrix{T}, y::V;
+function StatsBase.deviance(path::RegularizationPath, X::AbstractMatrix{T}, y::V;
                     offset::FPVector=T[], select=:all,
-                    wts::FPVector=ones(T, length(y)))
+                    wts::FPVector=ones(T, length(y))) where {T<:AbstractFloat,V<:FPVector}
     μ = predict(path, X; offset=offset, select=select)
     deviance(path, y, μ, wts)
 end
@@ -482,8 +518,8 @@ end
 """
 deviance at each segment of the path for (potentially new) y and predicted values μ
 """
-function StatsBase.deviance{T<:AbstractFloat,V<:FPVector}(path::RegularizationPath, y::V, μ::AbstractArray{T},
-                wts::FPVector=ones(T, length(y)))
+function StatsBase.deviance(path::RegularizationPath, y::V, μ::AbstractArray{T},
+                wts::FPVector=ones(T, length(y))) where {T<:AbstractFloat,V<:FPVector}
     # get model specs from path
     d = distfun(path)
 
@@ -498,7 +534,7 @@ function StatsBase.deviance{T<:AbstractFloat,V<:FPVector}(path::RegularizationPa
 
     # deviance is just their sum
     if size(μ,2) > 1
-        vec(sum(devresidv,1))
+        vec(sum(devresidv,dims=1))
     else
         sum(devresidv)
     end
