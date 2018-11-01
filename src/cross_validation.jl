@@ -5,7 +5,7 @@ using MLBase
 # which chooses λt at lowest mean OOS deviance.
 
 function CVmin(oosdevs)
-    cvmeans = mean(oosdevs,dims=2)
+    cvmeans = vec(mean(oosdevs,dims=2))
     segCVmin = argmin(cvmeans)
 end
 
