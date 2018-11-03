@@ -9,5 +9,6 @@ include("lasso.jl")
 include("gammalasso.jl")
 include("fusedlasso.jl")
 include("trendfiltering.jl")
+include("cross_validation.jl")
 
 end
