@@ -17,7 +17,7 @@ import Random: Sampler
 using GLM: FPVector
 export RegularizationPath, LassoPath, GammaLassoPath, NaiveCoordinateDescent,
        CovarianceCoordinateDescent, fit, fit!, coef, predict,
-       minAICc, hasintercept, df, aicc, distfun, linkfun, cross_validate_path
+       minAICc, hasintercept, dof, aicc, distfun, linkfun, cross_validate_path
 
 
 ## HELPERS FOR SPARSE COEFFICIENTS
@@ -358,26 +358,26 @@ function StatsBase.loglikelihood(path::RegularizationPath)
 end
 
 """
-    df(path::RegularizationPath)
+    dof(path::RegularizationPath)
 
 Approximates the degrees-of-freedom in each segment of the path as the number of non zero coefficients
 plus a dispersion parameter when appropriate.
 Note that for GammaLassoPath this may be a crude approximation, as gamlr does this differently.
 """
-function StatsBase.df(path::RegularizationPath)
+function StatsBase.dof(path::RegularizationPath)
     nλ = length(path.λ)
     βs = coef(path)
-    dof = zeros(Int,nλ)
+    df = zeros(Int,nλ)
     for s=1:nλ
-        dof[s] = sum(βs[:,s].!=0)
+        df[s] = sum(βs[:,s].!=0)
     end
 
     if dispersion_parameter(path)
         # add one for dispersion_parameter
-        dof.+=1
+        df.+=1
     end
 
-    dof
+    df
 end
 
 function infocrit(d::T,l::F,n,k) where {T,F}
@@ -389,13 +389,15 @@ function infocrit(d::T,l::F,n,k) where {T,F}
 end
 
 function StatsBase.aicc(path::RegularizationPath;k=2)
-    dfs = df(path)
+    dfs = dof(path)
     ls = loglikelihood(path)
     n = nobs(path)
     broadcast((d,l)->infocrit(d,l,n,k), dfs, ls)
 end
 
+minAIC(path::RegularizationPath)=argmin(aic(path))
 minAICc(path::RegularizationPath;k=2)=argmin(aicc(path;k=k))
+minBIC(path::RegularizationPath)=argmin(bic(path))
 
 hasintercept(path::RegularizationPath) = hasintercept(path.m.pp)
 
@@ -421,12 +423,36 @@ function Base.size(path::RegularizationPath)
 end
 
 """
-coef(path) returns a p by nλ coefficient array where p is the number of
-coefficients (including any intercept) and nλ is the number of path segments.
+    coef(path::RegularizationPath; select=:AICc)
+
+Returns a p by nλ coefficient array where p is the number of
+coefficients (including any intercept) and nλ is the number of path segments,
+or a selected segment's coefficients.
+
 If model was only initialized but not fit, returns a p vector of zeros.
 Consistent with StatsBase.coef, if the model has an intercept it is included.
+
+# Example:
+```julia
+  m = fit(LassoPath,X,y)
+  coef(m; select=:CVmin)
+```
+
+# Keywords
+- `select=:all` returns a p by nλ matrix of coefficients
+- `select=:AIC` selects the AIC minimizing segment
+- `select=:AICc` selects the corrected AIC minimizing segment
+- `select=:BIC` selects the BIC minimizing segment
+- `select=:CVmin` selects the segment that minimizing out-of-sample mean squared
+    error from cross-validation with `nCVfolds` random folds.
+- `select=:CV1se` selects the segment whose average OOS deviance is no more than
+    1 standard error away from the one minimizing out-of-sample mean squared
+    error from cross-validation with `nCVfolds` random folds.
+- `nCVfolds=10` number of cross-validation folds
+- `kwargs...` are passed to [`minAICc(::RegularizationPath)`](@ref) or to
+    [`cross_validate_path(::RegularizationPath)`](@ref)
 """
-function StatsBase.coef(path::RegularizationPath; select=:all, nCVfolds=10)
+function StatsBase.coef(path::RegularizationPath; select=:all, nCVfolds=10, kwargs...)
     if !isdefined(path,:coefs)
         X = path.m.pp.X
         p,nλ = size(path)
@@ -443,15 +469,23 @@ function StatsBase.coef(path::RegularizationPath; select=:all, nCVfolds=10)
         else
             path.coefs
         end
-    elseif select == :AICc
+    elseif select in [:AICc, :AIC, :BIC]
+        if select == :AICc
+            seg = minAICc(path; kwargs...)
+        elseif select == :AIC
+            seg = minAIC(path)
+        elseif select == :BIC
+            seg = minBIC(path)
+        end
+
         if hasintercept(path)
-            vec(vcat(path.b0[minAICc(path)],path.coefs[:,minAICc(path)]))
+            vec(vcat(path.b0[seg],path.coefs[:,seg]))
         else
-            path.coefs[:,minAICc(path)]
+            path.coefs[:,seg]
         end
     elseif select == :CVmin || select == :CV1se
         gen = Kfold(length(path.m.rr.y),nCVfolds)
-        segCV = cross_validate_path(path;gen=gen,select=select)
+        segCV = cross_validate_path(path;gen=gen,select=select, kwargs...)
         if hasintercept(path)
             vec(vcat(path.b0[segCV],path.coefs[:,segCV]))
         else
