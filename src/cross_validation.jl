@@ -26,7 +26,7 @@ end
 
 # convenience function to use the same data as in original path
 function cross_validate_path(path::RegularizationPath;                                  # fitted path
-                                                     gen=Kfold(length(y),10),           # folds generator (see MLBase)
+                                                     gen=Kfold(length(path.m.rr.y),10),           # folds generator (see MLBase)
                                                      select=:CVmin)                     # :CVmin or :CV1se
     m = path.m
     y = m.rr.y
