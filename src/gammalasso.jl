@@ -12,7 +12,7 @@ mutable struct GammaLassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <:
     λ::Vector{T}                  # shrinkage parameters
     autoλ::Bool                   # whether λ is automatically determined
     γ::Vector{T}                  # controls the concavity of the regularization path (γ=0 is Lasso) with size(X,2)
-    penalty_factor::Vector{T}     # regularization weights for each coeficient (multiplied by ω), defaults to 1 vector with size(X,2)
+    penalty_factor::Union{Vector{T},Nothing} # regularization weights for each coeficient (multiplied by ω), defaults to 1 vector with size(X,2)
     Xnorm::Vector{T}              # original squared norms of columns of X before standardization
     pct_dev::Vector{T}            # percent deviance explained by each model
     coefs::SparseMatrixCSC{T,Int} # model coefficients
@@ -24,6 +24,23 @@ mutable struct GammaLassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <:
 end
 
 "Compute coefficient specific weights vector ω_j^t based on previous iteration coefficients β times penalty_factor"
+function computeω!(ω::Vector{T}, γ::Vector{T}, penalty_factor::Nothing, β::SparseCoefficients{T}) where T
+    # initialize to penalty_factor
+    fill!(ω, one(T))
+
+    # set weights of non zero betas
+    @inbounds @simd for icoef = 1:nnz(β)
+        ipred = β.coef2predictor[icoef]
+        γi = γ[ipred]
+        if γi != 0.0
+            ω[ipred] /= (1.0+γi*abs(β.coef[icoef]))
+        end
+    end
+
+    # rescaling is done by penalty_factor, nothing about it in Taddy (2016)
+    nothing
+end
+
 function computeω!(ω::Vector{T}, γ::Vector{T}, penalty_factor::Vector{T}, β::SparseCoefficients{T}) where T
     # initialize to penalty_factor
     copyto!(ω,penalty_factor)
@@ -57,22 +74,14 @@ function StatsBase.fit(::Type{GammaLassoPath},
                        irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
                        maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
                        penalty_factor::Union{Vector,Nothing}=nothing,
+                       standardize_penalty::Bool=true,
                        fitargs...) where {T<:AbstractFloat,V<:FPVector}
 
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
     n = length(y)
     length(wts) == n || error("length(wts) = $(length(wts)) should be 0 or $n")
 
-    # Standardize predictors if requested
-    if standardize
-        Xnorm = vec(convert(Matrix{T},std(X; dims=1, corrected=false)))
-        for i = 1:length(Xnorm)
-            @inbounds Xnorm[i] = 1/Xnorm[i]
-        end
-        X = X .* transpose(Xnorm)
-    else
-        Xnorm = T[]
-    end
+    Xnorm = standardizeX!(X, standardize)
 
     # Gamma lasso adaptation
     # Can potentially pass a different γ for each element of X, but if scalar we copy it to all params
@@ -87,15 +96,16 @@ function StatsBase.fit(::Type{GammaLassoPath},
     if isa(penalty_factor, Nothing)
         penalty_factor = ones(T,p)
     else
-        penalty_factor = initpenaltyfactor(convert(Vector{T},penalty_factor),p)
+        penalty_factor = initpenaltyfactor(convert(Vector{T},penalty_factor),p,standardize_penalty)
     end
     ω = deepcopy(penalty_factor)
+    # ω = initpenaltyfactor(penalty_factor, p, standardize_penalty)
 
     # Lasso initialization
     α = convert(T, α)
     λminratio = convert(T, λminratio)
     coefitr = randomize ? RandomCoefficientIterator() : (1:0)
-    cd = algorithm{T,intercept,typeof(X),typeof(coefitr),Vector{T}}(X, α, maxncoef, 1e-7, coefitr, ω)
+    cd = algorithm{T,intercept,typeof(X),typeof(coefitr),typeof(ω)}(X, α, maxncoef, 1e-7, coefitr, ω)
 
     # GLM response initialization
     autoλ = λ == nothing

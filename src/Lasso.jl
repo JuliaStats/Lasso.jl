@@ -198,33 +198,62 @@ end
 const MIN_DEV_FRAC_DIFF = 1e-5
 const MAX_DEV_FRAC = 0.999
 
-# Compute automatic λ values based on X'y and λminratio
-function computeλ(Xy, λminratio, α, nλ, ω::Union{Vector,Nothing})
-    λmax = abs(Xy[1])
-    if !isa(ω, Nothing) && ω[1] > 0
-        λmax /= ω[1]
-    end
-    for i = 2:length(Xy)
+# Compute automatic λ values based on λmax and λminratio
+function computeλ(λmax, λminratio, α, nλ)
+    λmax /= α
+    logλmax = log(λmax)
+    exp.(range(logλmax, stop=logλmax + log(λminratio), length=nλ))
+end
+
+# Compute automatic λ values based on X'y and λminratio without weights ω
+function computeλ(Xy::Vector{T}, λminratio, α, nλ, ω::Nothing) where T
+    λmax = zero(T)
+    for i = eachindex(Xy)
         x = abs(Xy[i])
-        if !isa(ω, Nothing) && ω[i] > 0
-            x /= ω[i]
-        end
         if x > λmax
             λmax = x
         end
     end
-    λmax /= α
-    logλmax = log(λmax)
-    λ = exp.(range(logλmax, stop=logλmax + log(λminratio), length=nλ))
+    computeλ(λmax, λminratio, α, nλ)
+end
+
+# Compute automatic λ values based on X'y and λminratio with specific weights ω
+function computeλ(Xy::Vector{T}, λminratio, α, nλ, ω::Vector) where T
+    λmax = zero(T)
+    for i = eachindex(Xy)
+        if ω[i] > 0
+            x = abs(Xy[i]) / ω[i]
+            if x > λmax
+                λmax = x
+            end
+        end
+    end
+    computeλ(λmax, λminratio, α, nλ)
+end
+
+maxλ(λ::Vector, X::AbstractMatrix{T}, λminratio, α, nλ, ω, nullmodel) where T =
+    convert(Vector{T}, λ)
+
+function maxλ(λ::Nothing, X::AbstractMatrix{T}, λminratio, α, nλ, ω, nullmodel) where T
+    Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwt)
+    computeλ(Xy, λminratio, α, nλ, ω)
 end
 
 # rescales A so that it sums to base
 rescale(A, base) = A * (base / sum(A))
 
+# null model's X includes unpenalized (ω_j==0) variables
+nullX(X::AbstractMatrix{T}, intercept::Bool, ω::Nothing) where T = ones(T, size(X,1), ifelse(intercept, 1, 0))
+function nullX(X::AbstractMatrix{T}, intercept::Bool, ω::Vector) where T
+    ixunpenalized = findall(iszero, ω)
+    [ones(T, size(X,1), ifelse(intercept, 1, 0)) view(X, :, ixunpenalized)]
+end
+
+# version for linear model with no penaltyfactors (ω) specified
 function build_model(X::AbstractMatrix{T}, y::FPVector, d::Normal, l::IdentityLink,
                      lp::LinPred, λminratio::Real, λ::Union{Vector,Nothing},
                      wts::Union{FPVector,Nothing}, offset::Vector, α::Real, nλ::Int,
-                     ω::Union{Vector, Nothing}, intercept::Bool, irls_tol::Real, dofit::Bool) where T
+                     ω::Nothing, intercept::Bool, irls_tol::Real, dofit::Bool) where T
     # Special no-IRLS case
     mu = isempty(offset) ? y : y + offset
     nullb0 = intercept ? mean(mu, weights(wts)) : zero(T)
@@ -254,24 +283,21 @@ function build_model(X::AbstractMatrix{T}, y::FPVector, d::Normal, l::IdentityLi
     (model, nulldev, nullb0, λ)
 end
 
+# version for:
+# 1. Linear models with specified penaltyfactors (ω), and
+# 2. GLMs regardless of penaltyfactors
 function build_model(X::AbstractMatrix{T}, y::FPVector, d::UnivariateDistribution, l::Link,
                      lp::LinPred, λminratio::Real, λ::Union{Vector,Nothing},
                      wts::Union{FPVector,Nothing}, offset::Vector, α::Real, nλ::Int,
                      ω::Union{Vector, Nothing}, intercept::Bool, irls_tol::Real, dofit::Bool) where T
     # Fit to find null deviance
     # Maybe we should reuse this GlmResp object?
-    nullmodel = fit(GeneralizedLinearModel, ones(T, length(y), ifelse(intercept, 1, 0)), y, d, l;
+    nullmodel = fit(GeneralizedLinearModel, nullX(X, intercept, ω), y, d, l;
                     wts=wts, offset=offset, convTol=irls_tol, dofit=dofit)
     nulldev = deviance(nullmodel)
     nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
 
-    if λ == nothing
-        # Find max λ
-        Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwt)
-        λ = computeλ(Xy, λminratio, α, nλ, ω)
-    else
-        λ = convert(Vector{T}, λ)
-    end
+    λ = maxλ(λ, X, λminratio, α, nλ, ω, nullmodel)
 
     rr = GlmResp(y, d, l, offset, wts)
     model = GeneralizedLinearModel(rr, lp, false)
@@ -283,8 +309,28 @@ defaultalgorithm(d::Normal, l::IdentityLink, n::Int, p::Int) = p > 5n ? NaiveCoo
 defaultalgorithm(d::UnivariateDistribution, l::Link, n::Int, p::Int) = NaiveCoordinateDescent
 
 # following glmnet rescale penalty factors to sum to the number of coefficients
-initpenaltyfactor(penalty_factor::Nothing,p::Int) = nothing
-initpenaltyfactor(penalty_factor::Vector,p::Int) = rescale(penalty_factor, p)
+initpenaltyfactor(penalty_factor::Nothing,p::Int,::Bool) = nothing
+initpenaltyfactor(penalty_factor::Vector,p::Int,standardize_penalty::Bool) =
+    standardize_penalty ? rescale(penalty_factor, p) : penalty_factor
+
+# Standardize predictors if requested
+function standardizeX!(X::AbstractMatrix{T}, standardize::Bool) where T
+    if standardize
+        Xnorm = vec(convert(Matrix{T},std(X; dims=1, corrected=false)))
+        if any(x -> x == zero(T), Xnorm)
+            warn("""One of the predicators (columns of X) is a constant, so it can not be standardized.
+                  To include a constant predicator set standardize = false and intercept = false""")
+        end
+        for i = 1:length(Xnorm)
+            @inbounds Xnorm[i] = 1/Xnorm[i]
+        end
+        X = X .* transpose(Xnorm)
+    else
+        Xnorm = T[]
+    end
+
+    Xnorm
+end
 
 function StatsBase.fit(::Type{LassoPath},
                        X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
@@ -300,25 +346,13 @@ function StatsBase.fit(::Type{LassoPath},
                        irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
                        maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
                        penalty_factor::Union{Vector,Nothing}=nothing,
+                       standardize_penalty::Bool=true,
                        fitargs...) where {T<:AbstractFloat,V<:FPVector}
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
     n = length(y)
     length(wts) == n || error("length(wts) = $(length(wts)) should be 0 or $n")
 
-    # Standardize predictors if requested
-    if standardize
-        Xnorm = vec(convert(Matrix{T},std(X; dims=1, corrected=false)))
-        if any(x -> x == zero(T), Xnorm)
-            warn("""One of the predicators (columns of X) is a constant, so it can not be standardized.
-                  To include a constant predicator set standardize = false and intercept = false""")
-        end
-        for i = 1:length(Xnorm)
-            @inbounds Xnorm[i] = 1/Xnorm[i]
-        end
-        X = X .* transpose(Xnorm)
-    else
-        Xnorm = T[]
-    end
+    Xnorm = standardizeX!(X, standardize)
 
     # Lasso initialization
     α = convert(T, α)
@@ -326,7 +360,7 @@ function StatsBase.fit(::Type{LassoPath},
     coefitr = randomize ? RandomCoefficientIterator() : (1:0)
 
     # penalty_factor (ω) defaults to a vector of ones
-    ω = initpenaltyfactor(penalty_factor,size(X, 2))
+    ω = initpenaltyfactor(penalty_factor,size(X, 2),standardize_penalty)
 
     cd = algorithm{T,intercept,typeof(X),typeof(coefitr),typeof(ω)}(X, α, maxncoef, 1e-7, coefitr, ω)
 

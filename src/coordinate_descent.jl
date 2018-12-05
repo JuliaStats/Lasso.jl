@@ -298,7 +298,7 @@ function linpred!(mu::Vector{T}, cd::NaiveCoordinateDescent{T}, coef::SparseCoef
     mu
 end
 
-mutable struct CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:CoefficientIterator,W<:Union{Vector,Nothing}} <: CoordinateDescent{T,Intercept,M}
+mutable struct CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix{T},S<:CoefficientIterator,W<:Union{Vector,Nothing}} <: CoordinateDescent{T,Intercept,M}
     X::M                          # original design matrix
     μy::T                         # mean of y at current weights
     μX::Vector{T}                 # mean of X at current weights
@@ -317,7 +317,7 @@ mutable struct CovarianceCoordinateDescent{T,Intercept,M<:AbstractMatrix,S<:Coef
     tol::T                        # tolerance
     ω::W                          # coefficient-specific penalty weights
 
-    function CovarianceCoordinateDescent{T,Intercept,M,S,W}(X::M, α::Real, maxncoef::Int, tol::Real, coefiter::S, ω::Union{Vector{T},Nothing}) where {T,Intercept,M,S,W}
+    function CovarianceCoordinateDescent{T,Intercept,M,S,W}(X::M, α::Real, maxncoef::Int, tol::Real, coefiter::S, ω::Union{Vector,Nothing}) where {T,Intercept,M,S,W}
         new(X, zero(T), zeros(T, size(X, 2)), convert(T, NaN), Vector{T}(undef, size(X, 2)),
             Vector{T}(undef, size(X, 2)), Matrix{T}(undef, maxncoef, size(X, 2)), Vector{T}(undef, size(X, 1)),
             Vector{T}(undef, size(X, 1)), convert(T, NaN), coefiter, convert(T, NaN), α,
@@ -640,6 +640,7 @@ poststep(path::LassoPath, cd::CoordinateDescent, i::Int, coefs::SparseCoefficien
 # Fits GLMs (outer and middle loops)
 function StatsBase.fit!(path::RegularizationPath{S,T}; verbose::Bool=false, irls_maxiter::Int=30,
                         cd_maxiter::Int=100000, cd_tol::Real=1e-7, irls_tol::Real=1e-7,
+                        trimλ::Bool=true, # whether to break path when little change in dev and trim the λ set
                         criterion=:coef, minStepFac::Real=0.001) where {S<:GeneralizedLinearModel,T}
     irls_maxiter >= 1 || error("irls_maxiter must be positive")
     0 < minStepFac < 1 || error("minStepFac must be in (0, 1)")
@@ -763,7 +764,7 @@ function StatsBase.fit!(path::RegularizationPath{S,T}; verbose::Bool=false, irls
             b0s[i] = b0
 
             # Test whether we should continue
-            if i == nλ || (autoλ && (last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
+            if i == nλ || (trimλ && autoλ && (last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
                            pct_dev[i] > MAX_DEV_FRAC))
                 break
             end
@@ -787,6 +788,7 @@ end
 # Fits linear models (just the outer loop)
 function StatsBase.fit!(path::RegularizationPath{S,T}; verbose::Bool=false,
                         cd_maxiter::Int=10000, cd_tol::Real=1e-7, irls_tol::Real=1e-7,
+                        trimλ::Bool=true, # whether to break path when little change in dev and trim the λ set
                         criterion=:coef, minStepFac::Real=eps()) where {S<:LinearModel,T}
     0 < minStepFac < 1 || error("minStepFac must be in (0, 1)")
     criterion == :obj || criterion == :coef || error("criterion must be obj or coef")
@@ -829,7 +831,7 @@ function StatsBase.fit!(path::RegularizationPath{S,T}; verbose::Bool=false,
         b0s[i] = intercept(newcoef, cd)
 
         # Test whether we should continue
-        if i == nλ || (autoλ && (last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
+        if i == nλ || (trimλ && autoλ && (last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
                        pct_dev[i] > MAX_DEV_FRAC))
             break
         end
