@@ -672,7 +672,7 @@ function StatsBase.fit!(path::RegularizationPath{S,T}; verbose::Bool=false, irls
     scratchmu = Vector{T}(undef, size(X, 1))
     objold = convert(T, Inf)
 
-    if autoλ
+    if autoλ && isa(ω, Nothing)
         # No need to fit the first model
         b0s[1] = path.nullb0
         i = 2
@@ -800,7 +800,7 @@ function StatsBase.fit!(path::RegularizationPath{S,T}; verbose::Bool=false,
     cd.maxiter = cd_maxiter
     cd.tol = cd_tol
 
-    X = cd.X
+    @extractfields cd X ω
     coefs = spzeros(T, size(X, 2), nλ)
     b0s = zeros(T, nλ)
     newcoef = SparseCoefficients{T}(size(X, 2))
@@ -810,7 +810,7 @@ function StatsBase.fit!(path::RegularizationPath{S,T}; verbose::Bool=false,
 
     update!(cd, newcoef, r.mu, r.wts)
 
-    if autoλ
+    if autoλ && isa(ω, Nothing)
         # No need to fit the first model
         b0s[1] = path.nullb0
         i = 2

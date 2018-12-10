@@ -231,10 +231,38 @@ function computeλ(Xy::Vector{T}, λminratio, α, nλ, ω::Vector) where T
     computeλ(λmax, λminratio, α, nλ)
 end
 
-maxλ(λ::Vector, X::AbstractMatrix{T}, λminratio, α, nλ, ω, nullmodel) where T =
+function weightedresiduals(model::LinearModel)
+    r = model.rr
+    y = r.y
+    mu = r.mu
+    if isempty(r.wts)
+        y - mu
+    else
+        wts = r.wts
+        resid = similar(y)
+        @simd for i = eachindex(resid,y,mu,wts)
+            @inbounds resid[i] = (y[i] - mu[i]) * wts[i]
+        end
+        resid
+    end
+end
+
+# NOTE: mutates nullmodel
+maxλ!(nullmodel, λ::Vector, X::AbstractMatrix{T}, λminratio, α, nλ, ω) where T =
     convert(Vector{T}, λ)
 
-function maxλ(λ::Nothing, X::AbstractMatrix{T}, λminratio, α, nλ, ω, nullmodel) where T
+function maxλ!(nullmodel::LinearModel, λ::Nothing,
+    X::AbstractMatrix{T}, λminratio, α, nλ, ω) where T
+
+    # muscratch = nullmodel.rr.mu.*nullmodel.rr.wts
+    Xy = X'*weightedresiduals(nullmodel)
+
+    computeλ(Xy, λminratio, α, nλ, ω)
+end
+
+function maxλ!(nullmodel::GeneralizedLinearModel, λ::Nothing,
+    X::AbstractMatrix{T}, λminratio, α, nλ, ω) where T
+
     Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwt)
     computeλ(Xy, λminratio, α, nλ, ω)
 end
@@ -243,49 +271,35 @@ end
 rescale(A, base) = A * (base / sum(A))
 
 # null model's X includes unpenalized (ω_j==0) variables
-nullX(X::AbstractMatrix{T}, intercept::Bool, ω::Nothing) where T = ones(T, size(X,1), ifelse(intercept, 1, 0))
+nullX(X::AbstractMatrix{T}, intercept::Bool, ω::Nothing) where T =
+    ones(T, size(X,1), ifelse(intercept, 1, 0))
+
 function nullX(X::AbstractMatrix{T}, intercept::Bool, ω::Vector) where T
     ixunpenalized = findall(iszero, ω)
     [ones(T, size(X,1), ifelse(intercept, 1, 0)) view(X, :, ixunpenalized)]
 end
 
-# version for linear model with no penaltyfactors (ω) specified
+# version for Linear models
 function build_model(X::AbstractMatrix{T}, y::FPVector, d::Normal, l::IdentityLink,
                      lp::LinPred, λminratio::Real, λ::Union{Vector,Nothing},
                      wts::Union{FPVector,Nothing}, offset::Vector, α::Real, nλ::Int,
-                     ω::Nothing, intercept::Bool, irls_tol::Real, dofit::Bool) where T
-    # Special no-IRLS case
+                     ω::Union{Vector,Nothing}, intercept::Bool, irls_tol::Real, dofit::Bool) where T
     mu = isempty(offset) ? y : y + offset
-    nullb0 = intercept ? mean(mu, weights(wts)) : zero(T)
-    nulldev = 0.0
-    @simd for i = 1:length(mu)
-        @inbounds nulldev += abs2(mu[i] - nullb0)*wts[i]
-    end
+    nullmodel = LinearModel(LmResp{typeof(y)}(fill!(similar(y), 0), offset, wts, y),
+                            GLM.cholpred(nullX(X, intercept, ω), false))
+    fit!(nullmodel)
+    nulldev = deviance(nullmodel)
+    nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
 
-    if λ == nothing
-        # Find max λ
-        if intercept
-            muscratch = Vector{T}(undef, length(mu))
-            @simd for i = 1:length(mu)
-                @inbounds muscratch[i] = (mu[i] - nullb0)*wts[i]
-            end
-        else
-            muscratch = mu.*wts
-        end
-        Xy = X'muscratch
-        λ = computeλ(Xy, λminratio, α, nλ, ω)
-    else
-        λ = convert(Vector{T}, λ)
-    end
+    λ = maxλ!(nullmodel, λ, X, λminratio, α, nλ, ω)
 
-    # First y is just a placeholder here
+    # mu is just a placeholder here, setting it to nullmodel.mu causes problems
     model = LinearModel(LmResp{typeof(y)}(mu, offset, wts, y), lp)
+
     (model, nulldev, nullb0, λ)
 end
 
-# version for:
-# 1. Linear models with specified penaltyfactors (ω), and
-# 2. GLMs regardless of penaltyfactors
+# version for GLMs
 function build_model(X::AbstractMatrix{T}, y::FPVector, d::UnivariateDistribution, l::Link,
                      lp::LinPred, λminratio::Real, λ::Union{Vector,Nothing},
                      wts::Union{FPVector,Nothing}, offset::Vector, α::Real, nλ::Int,
@@ -297,7 +311,7 @@ function build_model(X::AbstractMatrix{T}, y::FPVector, d::UnivariateDistributio
     nulldev = deviance(nullmodel)
     nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
 
-    λ = maxλ(λ, X, λminratio, α, nλ, ω, nullmodel)
+    λ = maxλ!(nullmodel, λ, X, λminratio, α, nλ, ω)
 
     rr = GlmResp(y, d, l, offset, wts)
     model = GeneralizedLinearModel(rr, lp, false)
@@ -324,7 +338,7 @@ function standardizeX!(X::AbstractMatrix{T}, standardize::Bool) where T
         for i = 1:length(Xnorm)
             @inbounds Xnorm[i] = 1/Xnorm[i]
         end
-        X = X .* transpose(Xnorm)
+        copy!(X, X .* transpose(Xnorm))
     else
         Xnorm = T[]
     end
@@ -382,13 +396,14 @@ StatsBase.nobs(path::RegularizationPath) = length(path.m.rr.y)
 
 dispersion_parameter(path::RegularizationPath) = GLM.dispersion_parameter(distfun(path))
 
-function StatsBase.loglikelihood(path::RegularizationPath)
+function StatsBase.loglikelihood(path::RegularizationPath{S,T}) where {S<:LinearModel,T}
     n = nobs(path)
-    if typeof(path.m) <: LinearModel
-        -0.5.*n.*log.(deviance(path))
-    else
-        -0.5.*n.*deviance(path)
-    end
+    -0.5.*n.*log.(deviance(path))
+end
+
+function StatsBase.loglikelihood(path::RegularizationPath{S,T}) where {S,T}
+    n = nobs(path)
+    -0.5.*n.*deviance(path)
 end
 
 """

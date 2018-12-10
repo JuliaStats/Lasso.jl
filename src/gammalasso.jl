@@ -93,13 +93,14 @@ function StatsBase.fit(::Type{GammaLassoPath},
     end
 
     # Initialize penalty factors to 1 only if not supplied otherwise rescale as in glmnet
-    if isa(penalty_factor, Nothing)
-        penalty_factor = ones(T,p)
-    else
-        penalty_factor = initpenaltyfactor(convert(Vector{T},penalty_factor),p,standardize_penalty)
-    end
-    ω = deepcopy(penalty_factor)
-    # ω = initpenaltyfactor(penalty_factor, p, standardize_penalty)
+    # if isa(penalty_factor, Nothing)
+    #     penalty_factor = ones(T,p)
+    # else
+    #     penalty_factor = initpenaltyfactor(convert(Vector{T},penalty_factor),p,standardize_penalty)
+    # end
+    # ω = deepcopy(penalty_factor)
+    penalty_factor = initpenaltyfactor(penalty_factor, p, standardize_penalty)
+    ω = (isa(penalty_factor, Nothing) ? ones(T,p) : deepcopy(penalty_factor))
 
     # Lasso initialization
     α = convert(T, α)
@@ -110,7 +111,7 @@ function StatsBase.fit(::Type{GammaLassoPath},
     # GLM response initialization
     autoλ = λ == nothing
     model, nulldev, nullb0, λ = build_model(X, y, d, l, cd, λminratio, λ, wts .* T(1/sum(wts)),
-                                            Vector{T}(offset), α, nλ, ω, intercept, irls_tol, dofit)
+                                            Vector{T}(offset), α, nλ, penalty_factor, intercept, irls_tol, dofit)
 
     # Fit path
     path = GammaLassoPath{typeof(model),T}(model, nulldev, nullb0, λ, autoλ, γ, penalty_factor, Xnorm)

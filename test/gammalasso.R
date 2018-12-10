@@ -29,7 +29,7 @@ pop.sd <- function(x) sqrt(pop.var(x))
 families <- list(gaussian(link="identity"),binomial(link="logit"),poisson(link="log"))
 randfuns <- list(rnorm,rbinom1,rpois)
 gammas <- c(0, 2, 10)
-penaltyfactors <- list(c(1, 1, 1), c(0, 1, 0.4), c(0.01, 1, 0.4), c(2, 1, 1))
+penaltyfactors <- list(c(1, 1, 1), c(0, 1, 0.4), c(0.01, 1, 0.4))
 
 write.table(penaltyfactors,file = "penaltyfactors.csv", sep=",",row.names=FALSE,col.names=FALSE)
 
@@ -84,39 +84,4 @@ for(f in 1:length(families)) {
       }
   }
 }
-
-###### debug #######
-standardize = FALSE
-f <- 1
-gamma <- 0
-pf <- 1
-
-family <- families[[f]]
-print(family)
-randfun <- randfuns[[f]]
-invlink <- family$linkinv
-yp <- randfun(n,invlink(Ey))
-if (family$family == "gaussian") {
-  print("standardizing y for comparability with glmnet")
-  yp <- yp / pop.sd(yp)
-}
-
-# export test data
-data = cbind(yp, x)
-familyfilename <- paste0("gamlr.",family$family)
-
-# penaltyfactor <- penaltyfactors[[pf]]
-# penaltyfactor <- c(0.000001,0.0000001,1.0)
-# penaltyfactor <- c(1,1,1.0)
-# fit <- gamlr(x, yp, gamma=gamma, lambda.min.ratio=1e-3, family=family$family, varweight=penaltyfactor, standardize=standardize, verb=TRUE)
-
-gamlrdebug <- function(penaltyfactor) {
-  gamlr(x, yp, gamma=gamma, lambda.min.ratio=1e-3, family=family$family, varweight=penaltyfactor, standardize=standardize, verb=TRUE)  
-}
-
-# fit <- gamlrdebug(c(0.0,1.0,1.0))
-fit <- gamlrdebug(c(2.0,1.0,1.0))
-fit$lambda[1]
-fit$beta[,1]
-fit$alpha[1]
 

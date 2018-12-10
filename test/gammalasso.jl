@@ -22,7 +22,7 @@ datapath = joinpath(dirname(@__FILE__), "data")
 penaltyfactors = readcsvmat(joinpath(datapath,"penaltyfactors.csv"))
 
 rtol=1e-2
-Random.seed!(243214)
+# Random.seed!(243214)
 @testset "GammaLassoPath" begin
     @testset "$family" for (family, dist, link) in (("gaussian", Normal(), IdentityLink()), ("binomial", Binomial(), LogitLink()), ("poisson", Poisson(), LogLink()))
         data = readcsvmat(joinpath(datapath,"gamlr.$family.data.csv"))
@@ -38,7 +38,7 @@ Random.seed!(243214)
         #       else W[j] *= sqrt(H[j]/vsum);
         #     }
         #   }
-        @testset "penalty_factor=$pf" for pf = 1:1#size(penaltyfactors,2)
+        @testset "penalty_factor=$pf" for pf = 1:size(penaltyfactors,2)
             penalty_factor = penaltyfactors[:,pf]
             if penalty_factor == ones(p)
                 penalty_factor = nothing
@@ -57,7 +57,7 @@ Random.seed!(243214)
                 # fit julia version
                 glp = fit(GammaLassoPath, X, y, dist, link; γ=γ, trimλ=false,
                     λminratio=0.001, penalty_factor=penalty_factor, λ=λ,
-                    standardize=true, standardize_penalty=false)
+                    standardize=false, standardize_penalty=false)
 
                 # compare
                 @test true==issimilarhead(glp.λ,fittable[Symbol("fit.lambda")];rtol=rtol)
@@ -93,7 +93,7 @@ Random.seed!(243214)
                     # Compare with LassoPath
                     lp = fit(LassoPath, X, y, dist, link; trimλ=false,
                         λminratio=0.001, penalty_factor=penalty_factor, λ=λ,
-                        standardize=true, standardize_penalty=false)
+                        standardize=false, standardize_penalty=false)
                     @test glp.λ ≈ lp.λ
                     @test glp.b0 ≈ lp.b0
                     @test glp.coefs ≈ lp.coefs
@@ -108,7 +108,7 @@ rdist(x::Number,y::Number) = abs(x-y)/max(abs(x),abs(y))
 rdist(x::AbstractArray{T}, y::AbstractArray{S}; norm::Function=norm) where {T<:Number,S<:Number} = norm(x - y) / max(norm(x), norm(y))
 
 rtol=1e-2
-Random.seed!(243214)
+# Random.seed!(243214)
 (family, dist, link) = (("gaussian", Normal(), IdentityLink()),
                         ("binomial", Binomial(), LogitLink()),
                         ("poisson", Poisson(), LogLink()))[1]
@@ -125,7 +125,7 @@ X = convert(Matrix{Float64},data[:,2:end])
 #       else W[j] *= sqrt(H[j]/vsum);
 #     }
 #   }
-pf = 1 #size(penaltyfactors,2)
+pf = 3 #size(penaltyfactors,2)
 penalty_factor = penaltyfactors[:,pf]
 # penalty_factor = [2.0,1.0,1.0]
 if penalty_factor == ones(p)
@@ -155,37 +155,11 @@ wts = ones(n)
 # fit julia version
 glp = fit(GammaLassoPath, X, y, dist, link; γ=γ, λminratio=0.001,
     penalty_factor=penalty_factor, λ=λ, trimλ=false,
-    standardize=true, standardize_penalty=false)
+    standardize=false, standardize_penalty=false)
 lp = fit(LassoPath, X, y, dist, link; λminratio=0.001,
-    penalty_factor=penalty_factor, λ=λ, trimλ=true,
-    standardize=true, standardize_penalty=false)
-
-Xnorm = vec(convert(Matrix{T},std(X; dims=1, corrected=false)))
-for i = 1:length(Xnorm)
-    @inbounds Xnorm[i] = 1/Xnorm[i]
-end
-Xstd = X .* transpose(Xnorm)
-
-ixunpenalized = findall(iszero, penalty_factor)
-nullX = [ones(T, length(y), ifelse(intercept, 1, 0)) X[:, ixunpenalized]]
-nullmodel = fit(GeneralizedLinearModel, nullX, y, dist, link;
-                wts=wts .* T(1/sum(wts)), offset=offset, convTol=irls_tol, dofit=dofit)
-nulldev = deviance(nullmodel)
-nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
-
-# Find max λ
-# Xy = Xstd'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwt)
-Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwt)
-
-Lasso.rescale(penalty_factor, length(Xy))
-
-abs.(Xy)
-λmaxcands = abs.(Xy) ./ penalty_factor
-λmaxcandsgamlr = [abs(Xy[i]) / penalty_factor[i] for i=1:p]
-myλmaxgamlr = maximum([a for a in λmaxcandsgamlr if !isinf(a)])
-Lasso.computeλ(Xy, 0.001, 1.0, 100, Lasso.rescale(penalty_factor, length(Xy)))
-
-penalty_factor_glmnet = penalty_factor
+    penalty_factor=penalty_factor, λ=λ, trimλ=false,
+    standardize=false, standardize_penalty=false)
+penalty_factor_glmnet = (penalty_factor == nothing ? ones(size(X,2)) : penalty_factor)
 # First fit with GLMNet
 if isa(dist, Normal)
     yp = isempty(offset) ? y : y + offset
@@ -208,6 +182,57 @@ else
 end
 
 ### dev start
+
+Xnorm = vec(convert(Matrix{T},std(X; dims=1, corrected=false)))
+for i = 1:length(Xnorm)
+    @inbounds Xnorm[i] = 1/Xnorm[i]
+end
+Xstd = X .* transpose(Xnorm)
+X ≈ Xstd
+Lasso.standardizeX!(X, true)
+X ≈ Xstd
+
+wts = wts .* T(1/sum(wts))
+
+ixunpenalized = (penalty_factor == nothing ? Int[] : findall(iszero, penalty_factor))
+nullX = [ones(T, length(y), ifelse(intercept, 1, 0)) X[:, ixunpenalized]]
+nullmodel = fit(GeneralizedLinearModel, nullX, y, dist, link;
+                wts=wts, offset=offset, convTol=irls_tol, dofit=dofit)
+nulldev = deviance(nullmodel)
+nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
+
+# mu = isempty(offset) ? y : y + offset
+# nullmodel = LinearModel(LmResp{typeof(y)}(mu, offset, wts .* T(1/sum(wts)), y),
+#                         GLM.cholpred(nullX, false));
+
+# nullmodel = LinearModel(LmResp{typeof(y)}(fill!(similar(y), 0), offset, wts .* T(1/sum(wts)), y),
+#                         GLM.cholpred(nullX, false));
+
+nullmodel = LinearModel(LmResp{typeof(y)}(fill!(similar(y), 0), offset, wts, y),
+                        GLM.cholpred(nullX, false))
+fit!(nullmodel)
+nulldev = deviance(nullmodel)
+nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
+nullmu = nullmodel.rr.mu
+nulldev = 0.0
+@simd for i = 1:length(nullmu)
+    @inbounds global nulldev += abs2(y[i] - nullmu[i])*wts[i]
+end
+nulldev
+
+mu = isempty(offset) ? y : y + offset
+nullb0 = intercept ? mean(mu, weights(wts)) : zero(T)
+
+nullmodel.rr.mu
+muscratch = Lasso.weightedresiduals(nullmodel)
+Xy = X'muscratch
+# Find max λ
+# Xy = Xstd'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwt)
+Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwt)
+abs.(Xy) ./ penalty_factor
+Lasso.maxλ!(nullmodel, nothing, X, 0.001, 1.0, 100, penalty_factor)
+
+
 # same lambdas?
 a = issimilarhead(glp.λ,fittable[Symbol("fit.lambda")];rtol=rtol)
 b = issimilarhead(g.lambda,fittable[Symbol("fit.lambda")];rtol=rtol)
@@ -276,6 +301,7 @@ Vector(glp.coefs'[ixglp,:])
 @test true==issimilarhead(deviance(glp,X,y),fittable[Symbol("fit.deviance")]/nobs(glp);rtol=rtol)
 # @test true==issimilarhead(round(df(glp)[2:end]),round(fittable[2:end,Symbol("fit.df")]))
 @test true==issimilarhead(loglikelihood(glp),fittable[Symbol("fit.logLik")];rtol=rtol)
+typeof(glp)
 @test true==issimilarhead(aicc(glp),fittable[Symbol("fit.AICc")];rtol=rtol)
 
 # TODO: figure out why these are so off, maybe because most are corner solutions
