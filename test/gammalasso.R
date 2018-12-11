@@ -1,14 +1,7 @@
 # creates test data for gammalasso.jl
 library(gamlr)
 
-# automatic way only works with source("script.R"), not with RStudio
-# script.dir <- dirname(sys.frame(1)$ofile)
-# testdata.dir <- paste0(script.dir,"/data")
-
-# uncomment to set manually
-testdata.dir <- "~/.julia/dev/Lasso/test/data"
-
-setwd(testdata.dir)
+setwd("~/.julia/dev/Lasso/test/data")
 
 ### a low-D test (highly multi-collinear)
 
@@ -84,4 +77,3 @@ for(f in 1:length(families)) {
       }
   }
 }
-

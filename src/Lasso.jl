@@ -324,11 +324,11 @@ defaultalgorithm(d::UnivariateDistribution, l::Link, n::Int, p::Int) = NaiveCoor
 
 # following glmnet rescale penalty factors to sum to the number of coefficients
 initpenaltyfactor(penalty_factor::Nothing,p::Int,::Bool) = nothing
-initpenaltyfactor(penalty_factor::Vector,p::Int,standardize_penalty::Bool) =
-    standardize_penalty ? rescale(penalty_factor, p) : penalty_factor
+initpenaltyfactor(penalty_factor::Vector,p::Int,standardizeω::Bool) =
+    standardizeω ? rescale(penalty_factor, p) : penalty_factor
 
 # Standardize predictors if requested
-function standardizeX!(X::AbstractMatrix{T}, standardize::Bool) where T
+function standardizeX(X::AbstractMatrix{T}, standardize::Bool) where T
     if standardize
         Xnorm = vec(convert(Matrix{T},std(X; dims=1, corrected=false)))
         if any(x -> x == zero(T), Xnorm)
@@ -338,12 +338,12 @@ function standardizeX!(X::AbstractMatrix{T}, standardize::Bool) where T
         for i = 1:length(Xnorm)
             @inbounds Xnorm[i] = 1/Xnorm[i]
         end
-        copy!(X, X .* transpose(Xnorm))
+        X = X .* transpose(Xnorm)
     else
         Xnorm = T[]
     end
 
-    Xnorm
+    X, Xnorm
 end
 
 function StatsBase.fit(::Type{LassoPath},
@@ -360,13 +360,13 @@ function StatsBase.fit(::Type{LassoPath},
                        irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
                        maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
                        penalty_factor::Union{Vector,Nothing}=nothing,
-                       standardize_penalty::Bool=true,
+                       standardizeω::Bool=true,
                        fitargs...) where {T<:AbstractFloat,V<:FPVector}
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
     n = length(y)
     length(wts) == n || error("length(wts) = $(length(wts)) should be 0 or $n")
 
-    Xnorm = standardizeX!(X, standardize)
+    X, Xnorm = standardizeX(X, standardize)
 
     # Lasso initialization
     α = convert(T, α)
@@ -374,7 +374,7 @@ function StatsBase.fit(::Type{LassoPath},
     coefitr = randomize ? RandomCoefficientIterator() : (1:0)
 
     # penalty_factor (ω) defaults to a vector of ones
-    ω = initpenaltyfactor(penalty_factor,size(X, 2),standardize_penalty)
+    ω = initpenaltyfactor(penalty_factor, size(X, 2), standardizeω)
 
     cd = algorithm{T,intercept,typeof(X),typeof(coefitr),typeof(ω)}(X, α, maxncoef, 1e-7, coefitr, ω)
 

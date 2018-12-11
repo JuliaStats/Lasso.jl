@@ -23,27 +23,12 @@ mutable struct GammaLassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <:
         new(m, nulldev, nullb0, λ, autoλ, γ, penalty_factor, Xnorm)
 end
 
-"Compute coefficient specific weights vector ω_j^t based on previous iteration coefficients β times penalty_factor"
-function computeω!(ω::Vector{T}, γ::Vector{T}, penalty_factor::Nothing, β::SparseCoefficients{T}) where T
+copyω!(ω::Vector{T}, penalty_factor::Nothing) where T = fill!(ω, one(T))
+copyω!(ω::Vector{T}, penalty_factor::Vector{T}) where T = copyto!(ω, penalty_factor)
+
+function computeω!(ω::Vector{T}, γ::Vector{T}, penalty_factor::Union{Nothing,Vector{T}}, β::SparseCoefficients{T}) where T
     # initialize to penalty_factor
-    fill!(ω, one(T))
-
-    # set weights of non zero betas
-    @inbounds @simd for icoef = 1:nnz(β)
-        ipred = β.coef2predictor[icoef]
-        γi = γ[ipred]
-        if γi != 0.0
-            ω[ipred] /= (1.0+γi*abs(β.coef[icoef]))
-        end
-    end
-
-    # rescaling is done by penalty_factor, nothing about it in Taddy (2016)
-    nothing
-end
-
-function computeω!(ω::Vector{T}, γ::Vector{T}, penalty_factor::Vector{T}, β::SparseCoefficients{T}) where T
-    # initialize to penalty_factor
-    copyto!(ω,penalty_factor)
+    copyω!(ω, penalty_factor)
 
     # set weights of non zero betas
     @inbounds @simd for icoef = 1:nnz(β)
@@ -74,14 +59,14 @@ function StatsBase.fit(::Type{GammaLassoPath},
                        irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
                        maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
                        penalty_factor::Union{Vector,Nothing}=nothing,
-                       standardize_penalty::Bool=true,
+                       standardizeω::Bool=true,
                        fitargs...) where {T<:AbstractFloat,V<:FPVector}
 
     size(X, 1) == size(y, 1) || DimensionMismatch("number of rows in X and y must match")
     n = length(y)
     length(wts) == n || error("length(wts) = $(length(wts)) should be 0 or $n")
 
-    Xnorm = standardizeX!(X, standardize)
+    X, Xnorm = standardizeX(X, standardize)
 
     # Gamma lasso adaptation
     # Can potentially pass a different γ for each element of X, but if scalar we copy it to all params
@@ -93,13 +78,7 @@ function StatsBase.fit(::Type{GammaLassoPath},
     end
 
     # Initialize penalty factors to 1 only if not supplied otherwise rescale as in glmnet
-    # if isa(penalty_factor, Nothing)
-    #     penalty_factor = ones(T,p)
-    # else
-    #     penalty_factor = initpenaltyfactor(convert(Vector{T},penalty_factor),p,standardize_penalty)
-    # end
-    # ω = deepcopy(penalty_factor)
-    penalty_factor = initpenaltyfactor(penalty_factor, p, standardize_penalty)
+    penalty_factor = initpenaltyfactor(penalty_factor, p, standardizeω)
     ω = (isa(penalty_factor, Nothing) ? ones(T,p) : deepcopy(penalty_factor))
 
     # Lasso initialization
