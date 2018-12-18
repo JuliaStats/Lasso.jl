@@ -332,7 +332,7 @@ function standardizeX(X::AbstractMatrix{T}, standardize::Bool) where T
     if standardize
         Xnorm = vec(convert(Matrix{T},std(X; dims=1, corrected=false)))
         if any(x -> x == zero(T), Xnorm)
-            warn("""One of the predicators (columns of X) is a constant, so it can not be standardized.
+            @warn("""One of the predicators (columns of X) is a constant, so it can not be standardized.
                   To include a constant predicator set standardize = false and intercept = false""")
         end
         for i = 1:length(Xnorm)
