@@ -1,5 +1,7 @@
 using MLBase, Random
 
+@testset "cross validation" begin
+
 datapath = joinpath(dirname(@__FILE__), "data")
 
 data = readcsvmat(joinpath(datapath,"gamlr.gaussian.data.csv"))
@@ -14,6 +16,16 @@ coefsAICc = coef(path;select=:AICc)
 segminAICc = minAICc(path)
 @test segminAICc == 71
 @test coefsAICc == β[:,segminAICc]
+
+coefsBIC = coef(path;select=:BIC)
+segminBIC = Lasso.minBIC(path)
+@test segminBIC == 55
+@test coefsBIC == β[:,segminBIC]
+
+coefsAIC = coef(path;select=:AIC)
+segminAIC = Lasso.minAIC(path)
+@test segminAIC == 71
+@test coefsAIC == β[:,segminAIC]
 
 Random.seed!(13)
 gen = Kfold(length(y),10)
@@ -34,3 +46,5 @@ coefsCV1se = coef(path;select=:CV1se,nCVfolds=20)
 segCV1se = cross_validate_path(path,X,y;select=:CV1se,gen=gen,offset=offset)
 @test segCV1se == 42
 @test coefsCV1se == β[:,segCV1se]
+
+end
