@@ -38,7 +38,9 @@ Lasso paths
                       logarithmically spaced λ values from                            ``λminratio = 1e-4``.
                       :math:`\lambda_{\text{max}}`, the smallest λ value yielding a   Otherwise,
                       null model, to                                                  ``λminratio = 0.001``.
-                      :math:`\lambda\text{minratio} * \lambda_{\text{max}}`. If the
+                      :math:`\lambda\text{minratio} * \lambda_{\text{max}}`.
+    ----------------- --------------------------------------------------------------- --------------------
+    stopearly         When set to `true`, if the                                      ``true``
                       proportion of  deviance explained exceeds 0.999 or the
                       difference between the deviance explained by successive λ
                       values falls below :math:`10^{-5}`, the path stops early.
@@ -93,6 +95,9 @@ Lasso paths
                       :math:`\lambda\omega_j`.
                       Note the penalty factors are internally rescaled to sum to
                       the number of variables (following glmnet convention).
+    ----------------- --------------------------------------------------------------- --------------------
+    standardizeω      Whether to scale penalty factors to sum to the number of        ``true``
+                      variables (following glmnet convention).
     ================= =============================================================== ====================
 
     ``fit`` returns a LassoPath object describing the fit coefficients

@@ -27,16 +27,7 @@ Random.seed!(243214)
         y = convert(Vector{Float64},data[:,1])
         X = convert(Matrix{Float64},data[:,2:end])
         (n,p) = size(X)
-        # TODO: we currently do not match Taddy's gamlr with a penalty_factor!=1, likely because it standardizes them differently than glmnet.
-        # compared with glmnet (and γ=0), however, we get exactly the same results. Bug / feature ?
-        # relevant gamlr.c code where (penalty_factor is W)
-        #   if(*standardize){
-        #     for(int j=0; j<p; j++){
-        #       if(fabs(H[j])<1e-10){ H[j]=0.0; W[j] = INFINITY; }
-        #       else W[j] *= sqrt(H[j]/vsum);
-        #     }
-        #   }
-        @testset "penalty_factor=$pf" for pf = 1:1 #size(penaltyfactors,2)
+        @testset "penalty_factor=$pf" for pf = 1:size(penaltyfactors,2)
             penalty_factor = penaltyfactors[:,pf]
             if penalty_factor == ones(p)
                 penalty_factor = nothing
@@ -53,26 +44,28 @@ Random.seed!(243214)
                 λ = nothing #convert(Vector{Float64},fittable[Symbol("fit.lambda")]) # should be set to nothing evenatually
 
                 # fit julia version
-                glp = fit(GammaLassoPath, X, y, dist, link; γ=γ, λminratio=0.001, penalty_factor=penalty_factor, λ=λ)
+                glp = fit(GammaLassoPath, X, y, dist, link; γ=γ, stopearly=false,
+                    λminratio=0.001, penalty_factor=penalty_factor, λ=λ,
+                    standardize=false, standardizeω=false)
 
                 # compare
-                @test issimilarhead(glp.λ,fittable[Symbol("fit.lambda")];rtol=rtol)
-                @test issimilarhead(glp.b0,fittable[Symbol("fit.alpha")];rtol=rtol)
-                @test issimilarhead(convert(Matrix{Float64},glp.coefs'),gcoefs';rtol=rtol)
+                @test true==issimilarhead(glp.λ,fittable[Symbol("fit.lambda")];rtol=rtol)
+                @test true==issimilarhead(glp.b0,fittable[Symbol("fit.alpha")];rtol=rtol)
+                @test true==issimilarhead(convert(Matrix{Float64},glp.coefs'),gcoefs';rtol=rtol)
                 # we follow GLM.jl convention where deviance is scaled by nobs, while in gamlr it is not
-                @test issimilarhead(deviance(glp),fittable[Symbol("fit.deviance")]/nobs(glp);rtol=rtol)
-                @test issimilarhead(deviance(glp,X,y),fittable[Symbol("fit.deviance")]/nobs(glp);rtol=rtol)
-                # @test issimilarhead(round(df(glp)[2:end]),round(fittable[2:end,Symbol("fit.df")]))
-                @test issimilarhead(loglikelihood(glp),fittable[Symbol("fit.logLik")];rtol=rtol)
-                @test issimilarhead(aicc(glp),fittable[Symbol("fit.AICc")];rtol=rtol)
+                @test true==issimilarhead(deviance(glp),fittable[Symbol("fit.deviance")]/nobs(glp);rtol=rtol)
+                @test true==issimilarhead(deviance(glp,X,y),fittable[Symbol("fit.deviance")]/nobs(glp);rtol=rtol)
+                # @test true==issimilarhead(round(df(glp)[2:end]),round(fittable[2:end,Symbol("fit.df")]))
+                @test true==issimilarhead(loglikelihood(glp),fittable[Symbol("fit.logLik")];rtol=rtol)
+                @test true==issimilarhead(aicc(glp),fittable[Symbol("fit.AICc")];rtol=rtol)
 
                 # TODO: figure out why these are so off, maybe because most are corner solutions
                 # and stopping rules for lambda are different
                 # # what we really need all these stats for is that the AICc identifies the same minima:
-                # if indmin(aicc(glp)) != endof(aicc(glp)) && indmin(fittable[Symbol("fit.AICc")]) != endof(fittable[Symbol("fit.AICc")])
+                # if argmin(aicc(glp)) != lastindex(aicc(glp)) && argmin(fittable[Symbol("fit.AICc")]) != lastindex(fittable[Symbol("fit.AICc")])
                 #     # interior minima
                 #     println("comparing intereior AICc")
-                #     @test indmin(aicc(glp)) == indmin(fittable[Symbol("fit.AICc")])
+                #     @test argmin(aicc(glp)) == argmin(fittable[Symbol("fit.AICc")])
                 # end
 
                 # comparse CV, NOTE: this involves a random choice of train subsamples
@@ -82,22 +75,23 @@ Random.seed!(243214)
                 glp_CVmin = coef(glp,select=:CVmin,nCVfolds=10)
                 glp_CV1se = coef(glp,select=:CV1se,nCVfolds=10)
 
-                @test glp_CVmin ≈ gcoefs_CVmin rtol=0.35
-                @test glp_CV1se ≈ gcoefs_CV1se rtol=0.35
+                @test glp_CVmin ≈ gcoefs_CVmin rtol=0.3
+                @test glp_CV1se ≈ gcoefs_CV1se rtol=0.3
 
                 if γ==0
                     # Compare with LassoPath
-                    lp = fit(LassoPath, X, y, dist, link; λminratio=0.001, penalty_factor=penalty_factor, λ=λ)
+                    lp = fit(LassoPath, X, y, dist, link; stopearly=false,
+                        λminratio=0.001, penalty_factor=penalty_factor, λ=λ,
+                        standardize=false, standardizeω=false)
                     @test glp.λ == lp.λ
-                    @test glp.b0 == lp.b0
-                    @test glp.coefs == lp.coefs
+                    @test glp.b0 ≈ lp.b0
+                    @test glp.coefs ≈ lp.coefs
                 end
             end
         end
     end
 end
-
 # ## the following code is useful for understanding comparison failures
 #
 # rdist(x::Number,y::Number) = abs(x-y)/max(abs(x),abs(y))
-# rdist(x::AbstractArray{T}, y::AbstractArray{S}; norm::Function=vecnorm) where {T<:Number,S<:Number} = norm(x - y) / max(norm(x), norm(y))
+# rdist(x::AbstractArray{T}, y::AbstractArray{S}; norm::Function=norm) where {T<:Number,S<:Number} = norm(x - y) / max(norm(x), norm(y))
