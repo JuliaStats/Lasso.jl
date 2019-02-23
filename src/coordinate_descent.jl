@@ -519,7 +519,8 @@ function cycle!(coef::SparseCoefficients{T}, cd::CovarianceCoordinateDescent{T},
             end
 
             λωj = λω(λ,ω,ipred)
-            newcoef = S(s, λωj*α)/(Xssq[ipred] + λωj*(1 - α))
+            _ssq = Xssq[ipred]
+            newcoef = _ssq > zero(T) ? S(s, λωj*α)/(_ssq + λωj*(1 - α)) : zero(T)
             if oldcoef != newcoef
                 if icoef == 0
                     # Adding a new variable to the model
