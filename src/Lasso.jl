@@ -17,7 +17,9 @@ import Random: Sampler
 using GLM: FPVector
 export RegularizationPath, LassoPath, GammaLassoPath, NaiveCoordinateDescent,
        CovarianceCoordinateDescent, fit, fit!, coef, predict,
-       minAICc, hasintercept, dof, aicc, distfun, linkfun, cross_validate_path
+       minAICc, hasintercept, dof, aicc, distfun, linkfun, cross_validate_path,
+       SegSelect, segselect,
+       AllSeg, MinAIC, MinAICc, MinBIC, CVSegSelect, MinCVmse, MinCV1se
 
 
 ## HELPERS FOR SPARSE COEFFICIENTS
@@ -626,5 +628,6 @@ end
 include("coordinate_descent.jl")
 include("gammalasso.jl")
 include("cross_validation.jl")
+include("segselect.jl")
 
 end
