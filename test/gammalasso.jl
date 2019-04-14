@@ -96,7 +96,7 @@ end
 # rdist(x::Number,y::Number) = abs(x-y)/max(abs(x),abs(y))
 # rdist(x::AbstractArray{T}, y::AbstractArray{S}; norm::Function=norm) where {T<:Number,S<:Number} = norm(x - y) / max(norm(x), norm(y))
 
-(family, dist, link) = (("gaussian", Normal(), IdentityLink()), ("binomial", Binomial(), LogitLink()), ("poisson", Poisson(), LogLink()))[1]
+(family, dist, link) = (("gaussian", Normal(), IdentityLink()), ("binomial", Binomial(), LogitLink()), ("poisson", Poisson(), LogLink()))[2]
 data = readcsvmat(joinpath(datapath,"gamlr.$family.data.csv"))
 y = convert(Vector{Float64},data[:,1])
 X = convert(Matrix{Float64},data[:,2:end])
@@ -134,12 +134,25 @@ using InteractiveUtils, BenchmarkTools
 @code_warntype coef(glp, MinAICc())
 
 @btime coef(glp)
-@btime (s = AllSeg())
+s = AllSeg()
 @btime coef(glp, s)
 @btime coef(glp; select=:AICc)
 @btime (s = MinAICc())
 s = MinAICc()
 @btime coef(glp, s)
+
+m = fit(Lasso, X, y, dist, link; stopearly=false,
+    λminratio=0.001, penalty_factor=penalty_factor, λ=λ,
+    standardize=false, standardizeω=false)
+show(coef(m))
+predict(m)
+
+γ = 1
+m = fit(GammaLasso, X, y, dist, link; γ=γ, stopearly=false,
+    λminratio=0.001, penalty_factor=penalty_factor, λ=λ,
+    standardize=false, standardizeω=false)
+show(coef(m))
+predict(m)
 
 # compare
 @test true==issimilarhead(glp.λ,fittable[Symbol("fit.lambda")];rtol=rtol)

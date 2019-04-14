@@ -171,3 +171,37 @@ segselect(path::RegularizationPath,
            select::S;
            kwargs...) where {T<:AbstractFloat,V<:FPVector, S<:CVSegSelect} =
     cross_validate_path(path, X, y, select; kwargs...)
+
+module GammaLasso end
+
+pathtype(Lasso) = LassoPath
+pathtype(GammaLasso) = GammaLassoPath
+
+function StatsBase.fit(L::Module, args...; select::SegSelect=MinAICc(), kwargs...)
+
+    # fit a regularization path
+    M = pathtype(L)
+    path = fit(M, args...; kwargs...)
+
+    # extract its parts for reuse
+    m = path.m
+    pp = m.pp
+    X = pp.X
+
+    # add an interecept to newX if the model has one
+    if hasintercept(path)
+        segX = [ones(eltype(X),size(X,1),1) X]
+    end
+
+    # select coefs
+    beta0 = coef(path, select)
+
+    # create new linear predictor
+    segpp = DensePredQR(segX, beta0)
+
+    # create a new
+    newglm(m, segpp)
+end
+
+newglm(m::LinearModel, pp) = LinearModel(m.rr, pp)
+newglm(m::GeneralizedLinearModel, pp) = GeneralizedLinearModel(m.rr, pp, true)
