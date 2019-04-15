@@ -1,6 +1,10 @@
 "RegularizationPath segment selector supertype"
 abstract type SegSelect end
 
+"Index of the selected RegularizationPath segment"
+segselect(path::RegularizationPath, select::S) where S<:SegSelect =
+    throw("segselect(path, ::$S) is not implemented")
+
 "A RegularizationPath segment selector that returns all segments"
 struct AllSeg <: SegSelect end
 
@@ -48,7 +52,7 @@ end
 
 CVfun(oosdevs, ::MinCV1se) = CV1se(oosdevs)
 
-StatsBase.coef(path::RegularizationPath; select::S=AllSeg()) where S <: SegSelect = coef(path, select)
+StatsBase.coef(path::RegularizationPath; select=AllSeg(), kwargs...) = coef(path, select; kwargs...)
 function StatsBase.coef(path::RegularizationPath, select::S) where S <: SegSelect
     if !isdefined(path,:coefs)
         X = path.m.pp.X
@@ -79,90 +83,6 @@ function StatsBase.coef(path::RegularizationPath, select::AllSeg)
     end
 end
 
-function cross_validate_path(path::RegularizationPath,    # fitted path
-                       X::AbstractMatrix{T}, y::V,        # potentially new data
-                       select::S;
-                       offset::FPVector=T[],
-                       fitargs...) where {T<:AbstractFloat,V<:FPVector, S<:CVSegSelect}
-    @extractfields path m λ
-    gen = select.gen
-    n,p = size(X)
-    @assert n == length(y) "size(X,1) != length(y)"
-
-    nfolds = length(gen)
-    nλ = length(λ)
-    d = distfun(path)
-    l = linkfun(path)
-
-    # valid offset given?
-    if length(m.rr.offset) > 0
-        length(offset) == n ||
-            throw(ArgumentError("fit with offset, so `offset` kw arg must be an offset of length $n"))
-    else
-        length(offset) > 0 && throw(ArgumentError("fit without offset, so value of `offset` kw arg does not make sense"))
-    end
-
-    # EQUAL WEIGHTS ONLY!
-    wts = ones(T, n)
-
-    # results array
-    oosdevs = zeros(T,nλ,nfolds)
-
-    for (f, train_inds) in enumerate(gen)
-        test_inds = setdiff(1:n, train_inds)
-        nis = length(test_inds)
-
-        if length(offset) > 0
-            foldoffset = offset[train_inds]
-        else
-            foldoffset = offset
-        end
-
-        # fit model to train_inds
-        foldpath = fit(pathtype(path),X[train_inds,:],y[train_inds],d,l;λ=λ,wts=wts[train_inds],offset=foldoffset,fitargs...)
-
-        if length(offset) > 0
-            foldoffset = offset[test_inds]
-        else
-            foldoffset = offset
-        end
-
-        # calculate etas for each obs x segment
-        μ = predict(foldpath, X[test_inds,:]; offset=foldoffset, select=select)
-
-        # calculate deviations on test sets efficiently (not much mem)
-        for s=1:nλ
-            # deviance of segment s (cummulator for sum of obs deviances)
-            devs = zero(T)
-
-            for ip=1:nis
-                # get test obs
-                yi = y[test_inds[ip]]
-
-                # deviance of a single observation i in segment s
-                devs += devresid(d, yi, μ[ip,s])
-            end
-
-            # store result
-            oosdevs[s,f] = devs/nis
-        end
-    end
-
-    CVfun(oosdevs, select)
-end
-
-# convenience function to use the same data as in original path
-function cross_validate_path(path::RegularizationPath,     # fitted path
-                        select::S;
-                        fitargs...) where S<:CVSegSelect
-    m = path.m
-    y = m.rr.y
-    offset = m.rr.offset
-    Xstandardized = m.pp.X
-    cross_validate_path(path,Xstandardized,y,select;
-        offset=offset,standardize=false,fitargs...)
-end
-
 segselect(path::RegularizationPath, select::S) where S<:CVSegSelect =
     cross_validate_path(path, select)
 
@@ -172,23 +92,26 @@ segselect(path::RegularizationPath,
            kwargs...) where {T<:AbstractFloat,V<:FPVector, S<:CVSegSelect} =
     cross_validate_path(path, X, y, select; kwargs...)
 
-module GammaLasso end
+"A RegularizedModel represents selected segment from a RegularizationPath"
+abstract type RegularizedModel <: RegressionModel end
 
-pathtype(Lasso) = LassoPath
-pathtype(GammaLasso) = GammaLassoPath
+"A LassoModel represents selected segment from a LassoPath"
+abstract type LassoModel <: RegularizedModel end
 
-function StatsBase.fit(L::Module, args...; select::SegSelect=MinAICc(), kwargs...)
+"A GammaLassoModel represents selected segment from a GammaLassoPath"
+abstract type GammaLassoModel <: RegularizedModel end
 
-    # fit a regularization path
-    M = pathtype(L)
-    path = fit(M, args...; kwargs...)
+"Returns the RegularizedPath type R used in fit(R,...)"
+pathtype(::Type{LassoModel}) = LassoPath
+pathtype(::Type{GammaLassoModel}) = GammaLassoPath
 
-    # extract its parts for reuse
+function selectmodel(path::R, select::SegSelect) where R<:RegularizationPath
+    # extract reusable path parts
     m = path.m
     pp = m.pp
     X = pp.X
 
-    # add an interecept to newX if the model has one
+    # add an interecept to X if the model has one
     if hasintercept(path)
         segX = [ones(eltype(X),size(X,1),1) X]
     end
@@ -199,8 +122,18 @@ function StatsBase.fit(L::Module, args...; select::SegSelect=MinAICc(), kwargs..
     # create new linear predictor
     segpp = DensePredQR(segX, beta0)
 
-    # create a new
+    # create a LinearModel or GeneralizedLinearModel with the new linear predictor
     newglm(m, segpp)
+end
+
+function StatsBase.fit(::Type{R}, args...;
+    select::SegSelect=MinAICc(), kwargs...) where R<:RegularizedModel
+
+    # fit a regularization path
+    M = pathtype(R)
+    path = fit(M, args...; kwargs...)
+
+    selectmodel(path, select)
 end
 
 newglm(m::LinearModel, pp) = LinearModel(m.rr, pp)

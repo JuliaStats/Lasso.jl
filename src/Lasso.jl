@@ -20,7 +20,7 @@ export RegularizationPath, LassoPath, GammaLassoPath, NaiveCoordinateDescent,
        minAICc, hasintercept, dof, aicc, distfun, linkfun, cross_validate_path,
        SegSelect, segselect,
        AllSeg, MinAIC, MinAICc, MinBIC, CVSegSelect, MinCVmse, MinCV1se,
-       GammaLasso
+       LassoModel, GammaLassoModel
 
 
 ## HELPERS FOR SPARSE COEFFICIENTS
@@ -474,93 +474,19 @@ function Base.size(path::RegularizationPath)
   p,nλ
 end
 
-"""
-    coef(path::RegularizationPath; select=:AICc)
-
-Returns a p by nλ coefficient array where p is the number of
-coefficients (including any intercept) and nλ is the number of path segments,
-or a selected segment's coefficients.
-
-If model was only initialized but not fit, returns a p vector of zeros.
-Consistent with StatsBase.coef, if the model has an intercept it is included.
-
-# Example:
-```julia
-  m = fit(LassoPath,X,y)
-  coef(m; select=:CVmin)
-```
-
-# Keywords
-- `select=:all` returns a p by nλ matrix of coefficients
-- `select=:AIC` selects the AIC minimizing segment
-- `select=:AICc` selects the corrected AIC minimizing segment
-- `select=:BIC` selects the BIC minimizing segment
-- `select=:CVmin` selects the segment that minimizing out-of-sample mean squared
-    error from cross-validation with `nCVfolds` random folds.
-- `select=:CV1se` selects the segment whose average OOS deviance is no more than
-    1 standard error away from the one minimizing out-of-sample mean squared
-    error from cross-validation with `nCVfolds` random folds.
-- `nCVfolds=10` number of cross-validation folds
-- `kwargs...` are passed to [`minAICc(::RegularizationPath)`](@ref) or to
-    [`cross_validate_path(::RegularizationPath)`](@ref)
-"""
-function StatsBase.coef(path::RegularizationPath; select=:all, nCVfolds=10, kwargs...)
-    if !isdefined(path,:coefs)
-        X = path.m.pp.X
-        p,nλ = size(path)
-        if select == :all
-            return zeros(eltype(X),p,nλ)
-        else
-            return zeros(eltype(X),p)
-        end
-    end
-
-    if select == :all
-        if hasintercept(path)
-            vcat(path.b0',path.coefs)
-        else
-            path.coefs
-        end
-    elseif select in [:AICc, :AIC, :BIC]
-        if select == :AICc
-            seg = minAICc(path; kwargs...)
-        elseif select == :AIC
-            seg = minAIC(path)
-        elseif select == :BIC
-            seg = minBIC(path)
-        end
-
-        if hasintercept(path)
-            vec(vcat(path.b0[seg],path.coefs[:,seg]))
-        else
-            path.coefs[:,seg]
-        end
-    elseif select == :CVmin || select == :CV1se
-        gen = Kfold(length(path.m.rr.y),nCVfolds)
-        segCV = cross_validate_path(path;gen=gen,select=select, kwargs...)
-        if hasintercept(path)
-            vec(vcat(path.b0[segCV],path.coefs[:,segCV]))
-        else
-            path.coefs[:,segCV]
-        end
-    else
-        error("unknown selector $select")
-    end
-end
-
 "link of underlying GLM"
 GLM.linkfun(path::RegularizationPath{M}) where {M<:LinearModel} = IdentityLink()
 GLM.linkfun(path::RegularizationPath{GeneralizedLinearModel{GlmResp{V,D,L},L2}}) where {V<:FPVector,D<:UnivariateDistribution,L<:Link,L2<:GLM.LinPred} = L()
 
 ## Prediction function for GLMs
-function StatsBase.predict(path::RegularizationPath, newX::AbstractMatrix{T}; offset::FPVector=T[], select=:all) where {T<:AbstractFloat}
+function StatsBase.predict(path::RegularizationPath, newX::AbstractMatrix{T}; offset::FPVector=T[], select=AllSeg()) where {T<:AbstractFloat}
     # add an interecept to newX if the model has one
     if hasintercept(path)
         newX = [ones(eltype(newX),size(newX,1),1) newX]
     end
 
     # calculate etas for each obs x segment
-    eta = newX * coef(path;select=select)
+    eta = newX * coef(path, select)
 
     # get model
     mm = path.m
@@ -592,10 +518,10 @@ StatsBase.deviance(path::RegularizationPath) = (1 .- path.pct_dev) .* path.nulld
 
 """
 deviance at each segement of the path for (potentially new) data X and y
-select=:all or :AICc like in coef()
+select=AllSeg() or MinAICc() like in coef()
 """
 function StatsBase.deviance(path::RegularizationPath, X::AbstractMatrix{T}, y::V;
-                    offset::FPVector=T[], select=:all,
+                    offset::FPVector=T[], select=AllSeg(),
                     wts::FPVector=ones(T, length(y))) where {T<:AbstractFloat,V<:FPVector}
     μ = predict(path, X; offset=offset, select=select)
     deviance(path, y, μ, wts)
@@ -628,7 +554,8 @@ end
 
 include("coordinate_descent.jl")
 include("gammalasso.jl")
-include("cross_validation.jl")
 include("segselect.jl")
+include("cross_validation.jl")
+include("deprecated.jl")
 
 end
