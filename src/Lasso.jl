@@ -17,7 +17,10 @@ import Random: Sampler
 using GLM: FPVector
 export RegularizationPath, LassoPath, GammaLassoPath, NaiveCoordinateDescent,
        CovarianceCoordinateDescent, fit, fit!, coef, predict,
-       minAICc, hasintercept, dof, aicc, distfun, linkfun, cross_validate_path
+       minAICc, hasintercept, dof, aicc, distfun, linkfun, cross_validate_path,
+       SegSelect, segselect,
+       AllSeg, MinAIC, MinAICc, MinBIC, CVSegSelect, MinCVmse, MinCV1se,
+       LassoModel, GammaLassoModel
 
 
 ## HELPERS FOR SPARSE COEFFICIENTS
@@ -346,6 +349,82 @@ function standardizeX(X::AbstractMatrix{T}, standardize::Bool) where T
     X, Xnorm
 end
 
+"""
+    fit(LassoPath, X, y, d=Normal(), l=canonicallink(d); ...)   
+    
+fits a linear or generalized linear Lasso path given the design
+matrix `X` and response `y`:
+
+``\\underset{\\beta}{\\operatorname{argmin}} -\\frac{1}{N} \\mathcal{L}(y|X,\\beta) 
++ \\lambda\\left[(1-\\alpha)\\frac{1}{2}\\|\\beta\\|_2^2 + \\alpha\\|\\beta\\|_1\\right]``
+
+The optional argument `d` specifies the conditional distribution of
+response, while `l` specifies the link function. Lasso.jl inherits
+supported distributions and link functions from GLM.jl. The default
+is to fit an linear Lasso path, i.e., `d=Normal(), l=IdentityLink()`,
+or ``\\mathcal{L}(y|X,\\beta) = -\\frac{1}{2}\\|y - X\\beta\\|_2^2 + C``
+
+# Examples
+```julia
+fit(LassoPath, X, y)    # L1-regularized linear regression
+fit(LassoPath, X, y, Binomial(), Logit(); 
+    α=0.5) # Binomial logit regression with an Elastic net combination of 
+           # 0.5 L1 and 0.5 L2 regularization penalties
+```
+# Arguments
+- `wts=ones(length(y))`: Weights for each observation                                    
+- `offset=zeros(length(y))`: Offset of each observation                                    
+- `λ`: can be used to specify a specific set of λ values at which models are fit. 
+    If λ is unspecified, Lasso.jl selects nλ logarithmically spaced λ values from
+    `λmax`, the smallest λ value yielding a null model, to
+    `λminratio * λmax`.
+- `nλ=100` number of λ values to use
+- `λminratio=1e-4` if more observations than predictors otherwise 0.001.
+- `stopearly=true`: When `true`, if the proportion of deviance explained 
+    exceeds 0.999 or the difference between the deviance explained by successive λ
+    values falls below `1e-5`, the path stops early.                                    
+- `standardize=true`: Whether to standardize predictors to unit standard deviation 
+    before fitting.                              
+- `intercept=true`: Whether to fit an (unpenalized) model intercept.
+- `algorithm`: Algorithm to use. 
+    `NaiveCoordinateDescent` iteratively computes the dot product of the 
+    predictors with the  residuals, as opposed to the         
+    `CovarianceCoordinateDescent` algorithm, which uses a precomputed Gram matrix.                
+    `NaiveCoordinateDescent` is typically faster when there are many  
+    predictors that will not enter the model or when fitting        
+    generalized linear models.                                      
+    By default uses `NaiveCoordinateDescent` if more than 5x as many predictors 
+    as observations or model is a GLM. `CovarianceCoordinateDescent` otherwise.
+- `randomize=true`: Whether to randomize the order in which coefficients are
+    updated by coordinate descent. This can drastically speed
+    convergence if coefficients are highly correlated.
+- `maxncoef=min(size(X, 2), 2*size(X, 1))`: maximum number of coefficients 
+    allowed in the model. If exceeded, an error will be thrown.
+- `dofit=true`: Whether to fit the model upon construction. If `false`, the 
+    model can be fit later by calling `fit!(model)`.
+- `cd_tol=1e-7`: The tolerance for coordinate descent iterations iterations in
+    the inner loop.
+- `irls_tol=1e-7`: The tolerance for outer iteratively reweighted least squares
+    iterations. This is ignored unless the model is a generalized linear model.
+- `criterion=:coef` Convergence criterion. Controls how ``cd_tol`` and ``irls_tol``
+    are to be interpreted. Possible values are:
+    - ``:coef``: The model is considered to have converged if the
+    the maximum absolute squared difference in coefficients
+    between successive iterations drops below the specified
+    tolerance. This is the criterion used by glmnet.
+    - ``:obj``: The model is considered to have converged if the
+    the relative change in the Lasso/Elastic Net objective
+    between successive iterations drops below the specified
+    tolerance. This is the criterion used by GLM.jl.
+- `minStepFac=0.001`: The minimum step fraction for backtracking line search.
+- `penalty_factor=ones(size(X, 2))`: Separate penalty factor ``\\omega_j`` 
+    for each coefficient ``j``, i.e. instead of ``\\lambda`` penalties become
+    ``\\lambda\\omega_j``.
+    Note the penalty factors are internally rescaled to sum to
+    the number of variables (`glmnet.R` convention).
+- `standardizeω=true`: Whether to scale penalty factors to sum to the number of
+    variables (glmnet.R convention).
+"""
 function StatsBase.fit(::Type{LassoPath},
                        X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
                        l::Link=canonicallink(d);
@@ -471,93 +550,19 @@ function Base.size(path::RegularizationPath)
   p,nλ
 end
 
-"""
-    coef(path::RegularizationPath; select=:AICc)
-
-Returns a p by nλ coefficient array where p is the number of
-coefficients (including any intercept) and nλ is the number of path segments,
-or a selected segment's coefficients.
-
-If model was only initialized but not fit, returns a p vector of zeros.
-Consistent with StatsBase.coef, if the model has an intercept it is included.
-
-# Example:
-```julia
-  m = fit(LassoPath,X,y)
-  coef(m; select=:CVmin)
-```
-
-# Keywords
-- `select=:all` returns a p by nλ matrix of coefficients
-- `select=:AIC` selects the AIC minimizing segment
-- `select=:AICc` selects the corrected AIC minimizing segment
-- `select=:BIC` selects the BIC minimizing segment
-- `select=:CVmin` selects the segment that minimizing out-of-sample mean squared
-    error from cross-validation with `nCVfolds` random folds.
-- `select=:CV1se` selects the segment whose average OOS deviance is no more than
-    1 standard error away from the one minimizing out-of-sample mean squared
-    error from cross-validation with `nCVfolds` random folds.
-- `nCVfolds=10` number of cross-validation folds
-- `kwargs...` are passed to [`minAICc(::RegularizationPath)`](@ref) or to
-    [`cross_validate_path(::RegularizationPath)`](@ref)
-"""
-function StatsBase.coef(path::RegularizationPath; select=:all, nCVfolds=10, kwargs...)
-    if !isdefined(path,:coefs)
-        X = path.m.pp.X
-        p,nλ = size(path)
-        if select == :all
-            return zeros(eltype(X),p,nλ)
-        else
-            return zeros(eltype(X),p)
-        end
-    end
-
-    if select == :all
-        if hasintercept(path)
-            vcat(path.b0',path.coefs)
-        else
-            path.coefs
-        end
-    elseif select in [:AICc, :AIC, :BIC]
-        if select == :AICc
-            seg = minAICc(path; kwargs...)
-        elseif select == :AIC
-            seg = minAIC(path)
-        elseif select == :BIC
-            seg = minBIC(path)
-        end
-
-        if hasintercept(path)
-            vec(vcat(path.b0[seg],path.coefs[:,seg]))
-        else
-            path.coefs[:,seg]
-        end
-    elseif select == :CVmin || select == :CV1se
-        gen = Kfold(length(path.m.rr.y),nCVfolds)
-        segCV = cross_validate_path(path;gen=gen,select=select, kwargs...)
-        if hasintercept(path)
-            vec(vcat(path.b0[segCV],path.coefs[:,segCV]))
-        else
-            path.coefs[:,segCV]
-        end
-    else
-        error("unknown selector $select")
-    end
-end
-
 "link of underlying GLM"
 GLM.linkfun(path::RegularizationPath{M}) where {M<:LinearModel} = IdentityLink()
 GLM.linkfun(path::RegularizationPath{GeneralizedLinearModel{GlmResp{V,D,L},L2}}) where {V<:FPVector,D<:UnivariateDistribution,L<:Link,L2<:GLM.LinPred} = L()
 
 ## Prediction function for GLMs
-function StatsBase.predict(path::RegularizationPath, newX::AbstractMatrix{T}; offset::FPVector=T[], select=:all) where {T<:AbstractFloat}
+function StatsBase.predict(path::RegularizationPath, newX::AbstractMatrix{T}; offset::FPVector=T[], select=AllSeg()) where {T<:AbstractFloat}
     # add an interecept to newX if the model has one
     if hasintercept(path)
         newX = [ones(eltype(newX),size(newX,1),1) newX]
     end
 
     # calculate etas for each obs x segment
-    eta = newX * coef(path;select=select)
+    eta = newX * coef(path, select)
 
     # get model
     mm = path.m
@@ -589,10 +594,10 @@ StatsBase.deviance(path::RegularizationPath) = (1 .- path.pct_dev) .* path.nulld
 
 """
 deviance at each segement of the path for (potentially new) data X and y
-select=:all or :AICc like in coef()
+select=AllSeg() or MinAICc() like in coef()
 """
 function StatsBase.deviance(path::RegularizationPath, X::AbstractMatrix{T}, y::V;
-                    offset::FPVector=T[], select=:all,
+                    offset::FPVector=T[], select=AllSeg(),
                     wts::FPVector=ones(T, length(y))) where {T<:AbstractFloat,V<:FPVector}
     μ = predict(path, X; offset=offset, select=select)
     deviance(path, y, μ, wts)
@@ -625,6 +630,8 @@ end
 
 include("coordinate_descent.jl")
 include("gammalasso.jl")
+include("segselect.jl")
 include("cross_validation.jl")
+include("deprecated.jl")
 
 end

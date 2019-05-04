@@ -44,6 +44,14 @@ function computeω!(ω::Vector{T}, γ::Vector{T}, penalty_factor::Union{Nothing,
 end
 poststep(path::GammaLassoPath, cd::CoordinateDescent, i::Int, coefs::SparseCoefficients) = computeω!(cd.ω, path.γ, path.penalty_factor, coefs)
 
+"""
+    fit(GammaLassoPath, X, y, d=Normal(), l=canonicallink(d); ...)   
+    
+fits a linear or generalized linear (concave) gamma lasso path given the design
+matrix `X` and response `y`.
+
+See also [`fit(LassoPath...)`](@ref) for a full list of arguments
+"""
 function StatsBase.fit(::Type{GammaLassoPath},
                        X::AbstractMatrix{T}, y::V, d::UnivariateDistribution=Normal(),
                        l::Link=canonicallink(d);

@@ -24,29 +24,16 @@ function CV1se(oosdevs)
     error("should have found the cv1se by now")
 end
 
-# convenience function to use the same data as in original path
-function cross_validate_path(path::RegularizationPath;     # fitted path
-                        gen=Kfold(length(path.m.rr.y),10), # folds generator (see MLBase)
-                        select=:CVmin,                     # :CVmin or :CV1se
-                        fitargs...)
-    m = path.m
-    y = m.rr.y
-    offset = m.rr.offset
-    Xstandardized = m.pp.X
-    cross_validate_path(path,Xstandardized,y;gen=gen,select=select,offset=offset,
-        standardize=false,fitargs...)
-end
-
 pathtype(::LassoPath) = LassoPath
 pathtype(::GammaLassoPath) = GammaLassoPath
 
-function cross_validate_path(path::RegularizationPath,    # fitted path
-                       X::AbstractMatrix{T}, y::V;        # potentially new data
-                       gen=Kfold(length(y),10),           # folds generator (see MLBase)
-                       select=:CVmin,                     # :CVmin or :CV1se
+function cross_validate_path(path::R,    # fitted path
+                       X::AbstractMatrix{T}, y::V,        # potentially new data
+                       select::S;
                        offset::FPVector=T[],
-                       fitargs...) where {T<:AbstractFloat,V<:FPVector}
+                       fitargs...) where {R<:RegularizationPath,S<:CVSegSelect,T<:AbstractFloat,V<:FPVector}
     @extractfields path m λ
+    gen = select.gen
     n,p = size(X)
     @assert n == length(y) "size(X,1) != length(y)"
 
@@ -69,6 +56,9 @@ function cross_validate_path(path::RegularizationPath,    # fitted path
     # results array
     oosdevs = zeros(T,nλ,nfolds)
 
+    # always predict with all path segments
+    allseg = AllSeg()
+
     for (f, train_inds) in enumerate(gen)
         test_inds = setdiff(1:n, train_inds)
         nis = length(test_inds)
@@ -89,7 +79,7 @@ function cross_validate_path(path::RegularizationPath,    # fitted path
         end
 
         # calculate etas for each obs x segment
-        μ = predict(foldpath, X[test_inds,:]; offset=foldoffset, select=:all)
+        μ = predict(foldpath, X[test_inds,:]; offset=foldoffset, select=allseg)
 
         # calculate deviations on test sets efficiently (not much mem)
         for s=1:nλ
@@ -109,6 +99,17 @@ function cross_validate_path(path::RegularizationPath,    # fitted path
         end
     end
 
-    CVfun = eval(select)
-    CVfun(oosdevs)
+    CVfun(oosdevs, select)
+end
+
+# convenience function to use the same data as in original path
+function cross_validate_path(path::RegularizationPath,     # fitted path
+                        select::S;
+                        fitargs...) where S<:CVSegSelect
+    m = path.m
+    y = m.rr.y
+    offset = m.rr.offset
+    Xstandardized = m.pp.X
+    cross_validate_path(path,Xstandardized,y,select;
+        offset=offset,standardize=false,fitargs...)
 end

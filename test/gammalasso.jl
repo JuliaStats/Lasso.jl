@@ -72,8 +72,8 @@ Random.seed!(243214)
                 gcoefs_CVmin = vec(readcsvmat(joinpath(datapath,"gamlr.$family.$fitname.coefs.CVmin.csv")))
                 gcoefs_CV1se = vec(readcsvmat(joinpath(datapath,"gamlr.$family.$fitname.coefs.CV1se.csv")))
 
-                glp_CVmin = coef(glp,select=:CVmin,nCVfolds=10)
-                glp_CV1se = coef(glp,select=:CV1se,nCVfolds=10)
+                glp_CVmin = coef(glp,MinCVmse(glp, 10))
+                glp_CV1se = coef(glp,MinCV1se(glp, 10))
 
                 @test glp_CVmin ≈ gcoefs_CVmin rtol=0.3
                 @test glp_CV1se ≈ gcoefs_CV1se rtol=0.3
@@ -95,3 +95,106 @@ end
 #
 # rdist(x::Number,y::Number) = abs(x-y)/max(abs(x),abs(y))
 # rdist(x::AbstractArray{T}, y::AbstractArray{S}; norm::Function=norm) where {T<:Number,S<:Number} = norm(x - y) / max(norm(x), norm(y))
+
+# (family, dist, link) = (("gaussian", Normal(), IdentityLink()), ("binomial", Binomial(), LogitLink()), ("poisson", Poisson(), LogLink()))[2]
+# data = readcsvmat(joinpath(datapath,"gamlr.$family.data.csv"))
+# y = convert(Vector{Float64},data[:,1])
+# X = convert(Matrix{Float64},data[:,2:end])
+# (n,p) = size(X)
+# pf = (1:size(penaltyfactors,2))[1]
+# penalty_factor = penaltyfactors[:,pf]
+# if penalty_factor == ones(p)
+#     penalty_factor = nothing
+# end
+#
+# γ = [0 2 10][1]
+# fitname = "gamma$γ.pf$pf"
+#
+# # get gamlr.R prms and estimates
+# prms = CSV.read(joinpath(datapath,"gamlr.$family.$fitname.params.csv"))
+# fittable = CSV.read(joinpath(datapath,"gamlr.$family.$fitname.fit.csv"))
+# gcoefs = readcsvmat(joinpath(datapath,"gamlr.$family.$fitname.coefs.csv");types=[Float64 for i=1:100])
+# family = prms[1,Symbol("fit.family")]
+# γ = prms[1,Symbol("fit.gamma")]
+# λ = nothing #convert(Vector{Float64},fittable[Symbol("fit.lambda")]) # should be set to nothing evenatually
+#
+# # fit julia version
+# glp = fit(GammaLassoPath, X, y, dist, link; γ=γ, stopearly=false,
+#     λminratio=0.001, penalty_factor=penalty_factor, λ=λ,
+#     standardize=false, standardizeω=false)
+#
+# using InteractiveUtils, BenchmarkTools
+# @code_warntype coef(glp; select=:all)
+# @code_warntype minAICc(glp)
+# @code_warntype segselect(glp, Lasso.MinAIC())
+#
+# @code_warntype coef(glp)
+# @code_warntype coef(glp, AllSeg())
+# @code_warntype coef(glp; select=:AICc)
+# @code_warntype coef(glp, MinAICc())
+#
+# @btime coef(glp)
+# s = AllSeg()
+# @btime coef(glp, s)
+# coef(glp; select=:AICc)
+# @btime coef(glp; select=:AICc)
+# @btime (s = MinAICc())
+# s = MinAICc()
+# @btime coef(glp, s)
+#
+# m = fit(LassoModel, X, y, dist, link; stopearly=false,
+#     λminratio=0.001, penalty_factor=penalty_factor, λ=λ,
+#     standardize=false, standardizeω=false)
+# show(coef(m))
+# predict(m)
+#
+# γ = 1
+# m = fit(GammaLassoModel, X, y, dist, link; γ=γ, stopearly=false,
+#     λminratio=0.001, penalty_factor=penalty_factor, λ=λ,
+#     standardize=false, standardizeω=false)
+# show(coef(m))
+# predict(m)
+#
+# # compare
+# @test true==issimilarhead(glp.λ,fittable[Symbol("fit.lambda")];rtol=rtol)
+# @test true==issimilarhead(glp.b0,fittable[Symbol("fit.alpha")];rtol=rtol)
+# @test true==issimilarhead(convert(Matrix{Float64},glp.coefs'),gcoefs';rtol=rtol)
+# # we follow GLM.jl convention where deviance is scaled by nobs, while in gamlr it is not
+# @test true==issimilarhead(deviance(glp),fittable[Symbol("fit.deviance")]/nobs(glp);rtol=rtol)
+# @test true==issimilarhead(deviance(glp,X,y),fittable[Symbol("fit.deviance")]/nobs(glp);rtol=rtol)
+# # @test true==issimilarhead(round(df(glp)[2:end]),round(fittable[2:end,Symbol("fit.df")]))
+# @test true==issimilarhead(loglikelihood(glp),fittable[Symbol("fit.logLik")];rtol=rtol)
+# @test true==issimilarhead(aicc(glp),fittable[Symbol("fit.AICc")];rtol=rtol)
+#
+# # TODO: figure out why these are so off, maybe because most are corner solutions
+# # and stopping rules for lambda are different
+# # # what we really need all these stats for is that the AICc identifies the same minima:
+# # if argmin(aicc(glp)) != lastindex(aicc(glp)) && argmin(fittable[Symbol("fit.AICc")]) != lastindex(fittable[Symbol("fit.AICc")])
+# #     # interior minima
+# #     println("comparing intereior AICc")
+# #     @test argmin(aicc(glp)) == argmin(fittable[Symbol("fit.AICc")])
+# # end
+#
+# # comparse CV, NOTE: this involves a random choice of train subsamples
+# gcoefs_CVmin = vec(readcsvmat(joinpath(datapath,"gamlr.$family.$fitname.coefs.CVmin.csv")))
+# gcoefs_CV1se = vec(readcsvmat(joinpath(datapath,"gamlr.$family.$fitname.coefs.CV1se.csv")))
+#
+# @btime coef(glp,select=:CVmin,nCVfolds=10)
+# @btime coef(glp, MinCVmse(glp, 10))
+# @btime coef(glp, MinCV1se(glp, 10))
+# glp_CVmin = coef(glp,select=:CVmin,nCVfolds=10)
+#
+# glp_CV1se = coef(glp,select=:CV1se,nCVfolds=10)
+#
+# @test glp_CVmin ≈ gcoefs_CVmin rtol=0.3
+# @test glp_CV1se ≈ gcoefs_CV1se rtol=0.3
+#
+# if γ==0
+#     # Compare with LassoPath
+#     lp = fit(LassoPath, X, y, dist, link; stopearly=false,
+#         λminratio=0.001, penalty_factor=penalty_factor, λ=λ,
+#         standardize=false, standardizeω=false)
+#     @test glp.λ == lp.λ
+#     @test glp.b0 ≈ lp.b0
+#     @test glp.coefs ≈ lp.coefs
+# end
