@@ -27,6 +27,41 @@ Journal of Computational and Graphical Statistics, 26:3, 525-536.
 
 ## Quick start
 
+### Lasso (L1-penalized) Ordinary Least Squares Regression:
+```jldoctest
+julia> using DataFrames, Lasso
+
+julia> data = DataFrame(X=[1.0,2.0,3.0], Y=[2.0,4.0,7.0])
+3×2 DataFrame
+│ Row │ X     │ Y     │
+│     │ Int64 │ Int64 │
+├─────┼───────┼───────┤
+│ 1   │ 1     │ 2     │
+│ 2   │ 2     │ 4     │
+│ 3   │ 3     │ 7     │
+
+julia> m = fit(LassoModel, @formula(Y ~ X), data)
+StatsModels.DataFrameRegressionModel{GLM.LinearModel{GLM.LmResp{Array{Float64,1}},GLM.DensePredChol{Float64,Base.LinAlg.Cholesky{Float64,Array{Float64,2}}}},Array{Float64,2}}
+
+Formula: Y ~ 1 + X
+
+Coefficients:
+              Estimate Std.Error  t value Pr(>|t|)
+(Intercept)  -0.666667   0.62361 -1.06904   0.4788
+X                  2.5  0.288675  8.66025   0.0732
+
+julia> stderror(ols)
+2-element Array{Float64,1}:
+ 0.62361
+ 0.288675
+
+julia> predict(ols)
+3-element Array{Float64,1}:
+ 1.83333
+ 4.33333
+ 6.83333
+
+```
 To fit a Lasso path with default parameters:
 
 ```julia
