@@ -160,10 +160,6 @@ end
 addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
 
 abstract type RegularizationPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: RegressionModel end
-
-# don't add an intercept when using a @formula because we use the intercept keyword arg to add an intercept
-StatsModels.drop_intercept(::Type{R}) where R<:RegularizationPath = true
-
 ## LASSO PATH
 
 mutable struct LassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: RegularizationPath{S,T}

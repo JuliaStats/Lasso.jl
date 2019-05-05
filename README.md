@@ -1,7 +1,20 @@
 # Lasso
 
-[![Build Status](https://travis-ci.org/JuliaStats/Lasso.jl.svg?branch=master)](https://travis-ci.org/JuliaStats/Lasso.jl)
-[![Coverage Status](https://coveralls.io/repos/JuliaStats/Lasso.jl/badge.svg?branch=master)](https://coveralls.io/r/JuliaStats/Lasso.jl?branch=master)
+| **Documentation**                                                               | **Build Status**                                                                                |
+|:-------------------------------------------------------------------------------:|:-----------------------------------------------------------------------------------------------:|
+| [![][docs-stable-img]][docs-stable-url] [![][docs-dev-img]][docs-dev-url] | [![][travis-img]][travis-url] [![][codecov-img]][codecov-url] |
+
+[docs-dev-img]: https://img.shields.io/badge/docs-dev-blue.svg
+[docs-dev-url]: https://juliastats.github.io/Lasso.jl/latest
+
+[docs-stable-img]: https://img.shields.io/badge/docs-stable-blue.svg
+[docs-stable-url]: https://juliastats.github.io/Lasso.jl/stable
+
+[travis-img]: https://travis-ci.org/JuliaStats/Lasso.jl.svg?branch=master
+[travis-url]: https://travis-ci.org/JuliaStats/Lasso.jl
+
+[codecov-img]: https://coveralls.io/repos/JuliaStats/Lasso.jl/badge.svg?branch=master
+[codecov-url]: https://coveralls.io/r/JuliaStats/Lasso.jl?branch=master
 
 Lasso.jl is a pure Julia implementation of the glmnet coordinate
 descent algorithm for fitting linear and generalized linear Lasso and
@@ -61,7 +74,7 @@ It supports the same parameters as fit(LassoPath...), plus γ which controls
 the concavity of the regularization path. γ=0.0 is the Lasso. Higher values
 tend to result in sparser coefficient estimates.
 
-More documentation is available at [ReadTheDocs](http://lassojl.readthedocs.org/en/latest/).
+More documentation is available at [![][docs-stable-img]][docs-stable-url].
 
 ## TODO
 
