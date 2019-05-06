@@ -149,13 +149,22 @@ function selectmodel(path::R, select::SegSelect) where R<:RegularizationPath
     # add an interecept to X if the model has one
     if hasintercept(path)
         segX = [ones(eltype(X),size(X,1),1) X]
+    else
+        segX = X
     end
 
     # select coefs
-    beta0 = coef(path, select)
+    beta0 = Vector{Float64}(coef(path, select))
 
     # create new linear predictor
     segpp = DensePredQR(segX, beta0)
+
+    # rescale weights, which in GLM sum to nobs
+    m.rr.wts .*= nobs(path)
+
+    # same things GLM does to init just before fit!
+    GLM.installbeta!(segpp)
+    updateμ!(m.rr, linpred(segpp, zero(eltype(m.rr.y))))
 
     # create a LinearModel or GeneralizedLinearModel with the new linear predictor
     newglm(m, segpp)
@@ -230,12 +239,13 @@ fit(LassoModel, X, y, Binomial(), Logit();
 
 See also [`fit(::RegularizationPath...)`](@ref) for a full list of arguments
 """
-function StatsBase.fit(::Type{R}, args...;
-    select::SegSelect=MinAICc(), kwargs...) where R<:RegularizedModel
+function StatsBase.fit(::Type{R}, X::AbstractMatrix{T}, y::V,
+    d::UnivariateDistribution=Normal(), l::Link=canonicallink(d);
+    select::SegSelect=MinAICc(), kwargs...) where {R<:RegularizedModel,T<:AbstractFloat,V<:FPVector}
 
     # fit a regularization path
     M = pathtype(R)
-    path = fit(M, args...; kwargs...)
+    path = fit(M, X, y, d, l; kwargs...)
 
     selectmodel(path, select)
 end
@@ -245,3 +255,14 @@ newglm(m::GeneralizedLinearModel, pp) = GeneralizedLinearModel(m.rr, pp, true)
 
 # don't add an intercept when using a @formula because we use the intercept keyword arg to add an intercept
 StatsModels.drop_intercept(::Type{R}) where R<:RegularizedModel = true
+
+StatsModels.@delegate StatsModels.DataFrameRegressionModel.model [segselect, MinCVmse, MinCV1se]
+
+# same ediom as in https://github.com/JuliaStats/GLM.jl/blob/0926a95dfc2b09179151683053de7c69e22bbe2b/src/glmfit.jl#L375
+# makes converts X and y to floats
+StatsBase.fit(::Type{M},
+    X::AbstractMatrix,
+    y::AbstractVector,
+    d::UnivariateDistribution=Normal(),
+    l::Link=canonicallink(d); kwargs...) where {M<:Union{RegularizationPath, RegularizedModel}} =
+    fit(M, float(X), float(y), d, l; kwargs...)

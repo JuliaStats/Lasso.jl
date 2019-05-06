@@ -1,34 +1,35 @@
+# tests for segment selection and StatsModels @formula+df interface
 using Random
 @testset "segment/model selection" begin
 
 datapath = joinpath(dirname(@__FILE__), "data")
 
-@testset "$family" for (family, dist, link) in (("gaussian", Normal(), IdentityLink()), ("binomial", Binomial(), LogitLink()), ("poisson", Poisson(), LogLink()))
-    data = readcsvmat(joinpath(datapath,"gamlr.$family.data.csv"))
-    y = convert(Vector{Float64},data[:,1])
-    X = convert(Matrix{Float64},data[:,2:end])
-    Xwconst = [ones(size(X,1),1) X]
-    offset = fill(0.001,size(y))
+# NOTE: 1. we use intercept=false because of a StatsModels issue where predict with drop_intercept model didn't work
+# NOTE: 2. we skip the poisson because it does not converge without an intercept
+@testset "$family" for (family, dist, link) in (("gaussian", Normal(), IdentityLink()), ("binomial", Binomial(), LogitLink()))
+    data = CSV.read(joinpath(datapath,"gamlr.$family.data.csv"); header=[:y, :x1, :x2, :x3])
+    f = @formula(y~0+x1+x2+x3)
+    offset = fill(0.001,length(data.y))
 
     @testset "$L" for L in [LassoModel, GammaLassoModel]
         R = Lasso.pathtype(L)
-        path = fit(R, X, y, dist, link; offset=offset)
+        path = fit(R, f, data, dist, link; intercept=false, offset=offset)
 
         @testset "$(typeof(select))" for select in [MinAIC(), MinAICc(), MinBIC(), MinCVmse(path), MinCV1se(path)]
             Random.seed!(421)
-            m = fit(L, X, y, dist, link; select=select, offset=offset);
+            m = fit(L, f, data, dist, link; intercept=false, select=select, offset=offset)
 
             Random.seed!(421)
             pathcoefs = coef(path, select)
 
             Random.seed!(421)
-            pathpredict = Lasso.predict(path, X; select=select, offset=offset)
+            pathpredict = Lasso.predict(path, data; select=select, offset=offset)
 
             @test pathcoefs == coef(m)
-            if isa(m, LinearModel)
-                @test pathpredict == GLM.predict(m, Xwconst) + offset
+            if isa(dist, Normal)
+                @test pathpredict == GLM.predict(m, data) + offset
             else
-                @test pathpredict == GLM.predict(m, Xwconst; offset=offset)
+                @test pathpredict == GLM.predict(m, data; offset=offset)
             end
         end
     end
