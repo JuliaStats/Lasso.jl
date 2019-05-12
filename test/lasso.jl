@@ -22,7 +22,7 @@ function genrand(T::DataType, d::Distribution, l::GLM.Link, nsamples::Int, nfeat
     X, coef = makeX(0.0, nsamples, nfeatures, sparse)
     y = X*coef
     for i = 1:length(y)
-        y[i] = randdist(d, linkinv(l, y[i]))
+        y[i] = randdist(d, GLM.linkinv(l, y[i]))
     end
     (X, y)
 end
