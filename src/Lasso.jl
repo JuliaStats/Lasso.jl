@@ -19,7 +19,7 @@ using GLM: FPVector, LinPred, Link, LmResp, GlmResp, DensePredQR, updateμ!,
 export RegularizationPath, LassoPath, GammaLassoPath, NaiveCoordinateDescent,
        CovarianceCoordinateDescent, fit, fit!, coef, predict,
        minAICc, hasintercept, dof, aicc, distfun, linkfun, cross_validate_path,
-       SegSelect, segselect,
+       SegSelect, segselect, selectmodel,
        AllSeg, MinAIC, MinAICc, MinBIC, CVSegSelect, MinCVmse, MinCV1se,
        LassoModel, GammaLassoModel
 
@@ -354,20 +354,19 @@ function standardizeX(X::AbstractMatrix{T}, standardize::Bool) where T
     X, Xnorm
 end
 
-"""
+@doc raw"""
     fit(LassoPath, X, y, d=Normal(), l=canonicallink(d); ...)
 
 fits a linear or generalized linear Lasso path given the design
 matrix `X` and response `y`:
 
-``\\underset{\\beta}{\\operatorname{argmin}} -\\frac{1}{N} \\mathcal{L}(y|X,\\beta)
-+ \\lambda\\left[(1-\\alpha)\\frac{1}{2}\\|\\beta\\|_2^2 + \\alpha\\|\\beta\\|_1\\right]``
+``\underset{\beta}{\operatorname{argmin}} -\frac{1}{N} \mathcal{L}(y|X,\beta) + \lambda\left[(1-\alpha)\frac{1}{2}\|\beta\|_2^2 + \alpha\|\beta\|_1\right]``
 
 The optional argument `d` specifies the conditional distribution of
 response, while `l` specifies the link function. Lasso.jl inherits
 supported distributions and link functions from GLM.jl. The default
 is to fit an linear Lasso path, i.e., `d=Normal(), l=IdentityLink()`,
-or ``\\mathcal{L}(y|X,\\beta) = -\\frac{1}{2}\\|y - X\\beta\\|_2^2 + C``
+or ``\mathcal{L}(y|X,\beta) = -\frac{1}{2}\|y - X\beta\|_2^2 + C``
 
 # Examples
 ```julia
@@ -422,9 +421,9 @@ fit(LassoPath, X, y, Binomial(), Logit();
     between successive iterations drops below the specified
     tolerance. This is the criterion used by GLM.jl.
 - `minStepFac=0.001`: The minimum step fraction for backtracking line search.
-- `penalty_factor=ones(size(X, 2))`: Separate penalty factor ``\\omega_j``
-    for each coefficient ``j``, i.e. instead of ``\\lambda`` penalties become
-    ``\\lambda\\omega_j``.
+- `penalty_factor=ones(size(X, 2))`: Separate penalty factor ``\omega_j``
+    for each coefficient ``j``, i.e. instead of ``\lambda`` penalties become
+    ``\lambda\omega_j``.
     Note the penalty factors are internally rescaled to sum to
     the number of variables (`glmnet.R` convention).
 - `standardizeω=true`: Whether to scale penalty factors to sum to the number of
@@ -559,7 +558,15 @@ end
 GLM.linkfun(path::RegularizationPath{M}) where {M<:LinearModel} = IdentityLink()
 GLM.linkfun(path::RegularizationPath{GeneralizedLinearModel{GlmResp{V,D,L},L2}}) where {V<:FPVector,D<:UnivariateDistribution,L<:Link,L2<:GLM.LinPred} = L()
 
-## Prediction function for GLMs
+"""
+predict(path::RegularizationPath, newX::AbstractMatrix; kwargs...)
+
+Predicted values for a selected segment of a regularization path.
+
+# Examples
+```julia
+predict(path, newX; select=MinBIC())     # predict using BIC minimizing segment
+"""
 function StatsBase.predict(path::RegularizationPath, newX::AbstractMatrix{T}; offset::FPVector=T[], select=AllSeg()) where {T<:AbstractFloat}
     # add an interecept to newX if the model has one
     if hasintercept(path)

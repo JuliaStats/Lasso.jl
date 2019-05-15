@@ -8,28 +8,30 @@ datapath = joinpath(dirname(@__FILE__), "data")
 # NOTE: 2. we skip the poisson because it does not converge without an intercept
 @testset "$family" for (family, dist, link) in (("gaussian", Normal(), IdentityLink()), ("binomial", Binomial(), LogitLink()))
     data = CSV.read(joinpath(datapath,"gamlr.$family.data.csv"); header=[:y, :x1, :x2, :x3])
-    f = @formula(y~0+x1+x2+x3)
     offset = fill(0.001,length(data.y))
 
     @testset "$L" for L in [LassoModel, GammaLassoModel]
         R = Lasso.pathtype(L)
-        path = fit(R, f, data, dist, link; intercept=false, offset=offset)
 
-        @testset "$(typeof(select))" for select in [MinAIC(), MinAICc(), MinBIC(), MinCVmse(path), MinCV1se(path)]
-            Random.seed!(421)
-            m = fit(L, f, data, dist, link; intercept=false, select=select, offset=offset)
+        @testset "$f" for (f,intercept) in ((@formula(y~x1+x2+x3), true), (@formula(y~0+x1+x2+x3), false))
+            path = fit(R, f, data, dist, link; intercept=intercept, offset=offset)
 
-            Random.seed!(421)
-            pathcoefs = coef(path, select)
+            @testset "$(typeof(select))" for select in [MinAIC(), MinAICc(), MinBIC(), MinCVmse(path), MinCV1se(path)]
+                Random.seed!(421)
+                m = fit(L, f, data, dist, link; select=select, intercept=intercept, offset=offset)
 
-            Random.seed!(421)
-            pathpredict = Lasso.predict(path, data; select=select, offset=offset)
+                Random.seed!(421)
+                pathcoefs = coef(path, select)
 
-            @test pathcoefs == coef(m)
-            if isa(dist, Normal)
-                @test pathpredict == GLM.predict(m, data) + offset
-            else
-                @test pathpredict == GLM.predict(m, data; offset=offset)
+                Random.seed!(421)
+                pathpredict = predict(path, data; select=select, offset=offset)
+
+                @test pathcoefs == coef(m)
+                if isa(dist, Normal)
+                    @test pathpredict == predict(m, data) + offset
+                else
+                    @test pathpredict == predict(m, data; offset=offset)
+                end
             end
         end
     end
