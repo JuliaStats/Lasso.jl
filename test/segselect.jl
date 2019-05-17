@@ -24,13 +24,13 @@ datapath = joinpath(dirname(@__FILE__), "data")
                 pathcoefs = coef(path, select)
 
                 Random.seed!(421)
-                pathpredict = predict(path, data; select=select, offset=offset)
+                pathpredict = Lasso.predict(path, data; select=select, offset=offset)
 
                 @test pathcoefs == coef(m)
                 if isa(dist, Normal)
-                    @test pathpredict == predict(m, data) + offset
+                    @test pathpredict == GLM.predict(m, data) + offset
                 else
-                    @test pathpredict == predict(m, data; offset=offset)
+                    @test pathpredict == GLM.predict(m, data; offset=offset)
                 end
             end
         end

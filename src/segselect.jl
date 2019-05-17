@@ -273,7 +273,7 @@ function StatsBase.fit(::Type{R}, X::AbstractMatrix{T}, y::V,
 
     # fit a regularization path
     M = pathtype(R)
-    path = fit(M, X, y, d, l; kwargs...)
+    path = fit(M, X, y, d, l; intercept=intercept, kwargs...)
 
     R(selectmodel(path, select), intercept)
 end
@@ -292,7 +292,8 @@ for modeltype in (:LassoModel, :GammaLassoModel)
                                      StatsBase.loglikelihood, StatsBase.nullloglikelihood,
                                      StatsBase.dof, StatsBase.dof_residual, StatsBase.nobs,
                                      StatsBase.stderror, StatsBase.vcov,
-                                     StatsBase.residuals, StatsBase.response
+                                     StatsBase.residuals, StatsBase.response,
+                                     StatsBase.coeftable
                                      ]
     end
 end
