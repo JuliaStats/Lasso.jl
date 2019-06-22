@@ -21,7 +21,7 @@ export RegularizationPath, LassoPath, GammaLassoPath, NaiveCoordinateDescent,
        minAICc, hasintercept, dof, aicc, distfun, linkfun, cross_validate_path,
        SegSelect, segselect, selectmodel,
        AllSeg, MinAIC, MinAICc, MinBIC, CVSegSelect, MinCVmse, MinCV1se,
-       LassoModel, GammaLassoModel
+       RegularizedModel, LassoModel, GammaLassoModel
 
 
 ## HELPERS FOR SPARSE COEFFICIENTS

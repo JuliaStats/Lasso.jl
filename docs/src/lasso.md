@@ -51,10 +51,49 @@ AllSeg
 
 ## Lasso model fitting
 Often one wishes to both fit the path and select a particular segment.
-This can be done with `fit(RegularizedModel,...)`, which returns a fitten GLM
-representing the selected model.
+This can be done with `fit(RegularizedModel,...)`, which returns a fitted
+`RegularizedModel` wrapping a `GLM` representation of the selected model.
+
+For example, if we want to fit a `LassoPath` and select its segment
+that minimizes 2-fold cross-validation mean squared error, we can do it in one
+step as follows:
+
+```jldoctest
+julia> using DataFrames, Lasso, MLBase, Random
+
+julia> Random.seed!(124); # because CV folds are random
+
+julia> data = DataFrame(X=[1,2,3], Y=[2,4,7])
+3×2 DataFrames.DataFrame
+│ Row │ X     │ Y     │
+│     │ Int64 │ Int64 │
+├─────┼───────┼───────┤
+│ 1   │ 1     │ 2     │
+│ 2   │ 2     │ 4     │
+│ 3   │ 3     │ 7     │
+
+julia> m = fit(LassoModel, @formula(Y ~ X), data; select=MinCVmse(Kfold(3,2)))
+StatsModels.DataFrameRegressionModel{LassoModel{LinearModel{GLM.LmResp{Array{Float64,1}},GLM.DensePredQR{Float64}}},Array{Float64,2}}
+
+Formula: Y ~ +X
+
+Coefficients:
+──────────────────────────────────────────────────────────────────
+    Estimate  Std. Error   t value  Pr(>|t|)  Lower 95%  Upper 95%
+──────────────────────────────────────────────────────────────────
+x1   4.33333      5.4365  0.797081    0.5716   -64.744     73.4106
+x2   0.0          2.0548  0.0         1.0000   -26.1088    26.1088
+──────────────────────────────────────────────────────────────────
+
+julia> coef(m)
+2-element Array{Float64,1}:
+ 4.333333333333335
+ 0.0              
+
+```
 
 ```@docs
+RegularizedModel
 LassoModel
 GammaLassoModel
 selectmodel
