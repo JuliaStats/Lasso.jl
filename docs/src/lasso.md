@@ -24,8 +24,8 @@ models via coordinate descent. Journal of Statistical Software,
 33(1), 1.
 
 ## Using the model
-Lasso adhears to most of the `StatsBase` interface, so `coef` and `predict`,
-which would work as expected, except that a particular segment of the path
+Lasso adhears to most of the `StatsBase` interface, so `coef` and `predict`
+should work as expected, except that a particular segment of the path
 would need to be selected.
 
 ```@docs

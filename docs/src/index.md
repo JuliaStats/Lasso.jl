@@ -31,8 +31,8 @@ Journal of Computational and Graphical Statistics, 26:3, 525-536.
 ```jldoctest
 julia> using DataFrames, Lasso
 
-julia> data = DataFrame(X=[1.0,2.0,3.0], Y=[2.0,4.0,7.0])
-3×2 DataFrame
+julia> data = DataFrame(X=[1,2,3], Y=[2,4,7])
+3×2 DataFrames.DataFrame
 │ Row │ X     │ Y     │
 │     │ Int64 │ Int64 │
 ├─────┼───────┼───────┤
@@ -41,28 +41,31 @@ julia> data = DataFrame(X=[1.0,2.0,3.0], Y=[2.0,4.0,7.0])
 │ 3   │ 3     │ 7     │
 
 julia> m = fit(LassoModel, @formula(Y ~ X), data)
-StatsModels.DataFrameRegressionModel{GLM.LinearModel{GLM.LmResp{Array{Float64,1}},GLM.DensePredChol{Float64,Base.LinAlg.Cholesky{Float64,Array{Float64,2}}}},Array{Float64,2}}
+StatsModels.DataFrameRegressionModel{LassoModel{LinearModel{GLM.LmResp{Array{Float64,1}},GLM.DensePredQR{Float64}}},Array{Float64,2}}
 
-Formula: Y ~ 1 + X
+Formula: Y ~ +X
 
 Coefficients:
-              Estimate Std.Error  t value Pr(>|t|)
-(Intercept)  -0.666667   0.62361 -1.06904   0.4788
-X                  2.5  0.288675  8.66025   0.0732
+──────────────────────────────────────────────────────────────────
+    Estimate  Std. Error   t value  Pr(>|t|)  Lower 95%  Upper 95%
+──────────────────────────────────────────────────────────────────
+x1  3.88915      4.86043  0.800166    0.5704   -57.8684    65.6467
+x2  0.222093     1.83707  0.120895    0.9234   -23.1201    23.5643
+──────────────────────────────────────────────────────────────────
 
-julia> stderror(ols)
+julia> stderror(m)
 2-element Array{Float64,1}:
- 0.62361
- 0.288675
+ 4.860427341926979
+ 1.8370688588910695
 
-julia> predict(ols)
+julia> predict(m)
 3-element Array{Float64,1}:
- 1.83333
- 4.33333
- 6.83333
+ 4.161154511001072
+ 4.433161908091373
+ 4.705169305181673
 
 ```
-To fit a Lasso path with default parameters:
+To get an entire Lasso regularization path with default parameters:
 
 ```julia
 fit(LassoPath, X, y, dist, link)

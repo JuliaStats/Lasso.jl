@@ -15,7 +15,7 @@ using Reexport, LinearAlgebra, SparseArrays, Random, .Util, MLBase
 import Random: Sampler
 @reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
 using GLM: FPVector, LinPred, Link, LmResp, GlmResp, DensePredQR, updateμ!,
-    linkfun, linkinv
+    linkfun, linkinv, LinPredModel
 export RegularizationPath, LassoPath, GammaLassoPath, NaiveCoordinateDescent,
        CovarianceCoordinateDescent, fit, fit!, coef, predict,
        minAICc, hasintercept, dof, aicc, distfun, linkfun, cross_validate_path,
@@ -160,6 +160,10 @@ end
 addcoef(x::UnitRange{Int}, icoef::Int) = 1:length(x)+1
 
 abstract type RegularizationPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: RegressionModel end
+
+# don't add an intercept when using a @formula because we use the intercept keyword arg to add an intercept
+StatsModels.drop_intercept(::Type{R}) where R<:RegularizationPath = true
+
 ## LASSO PATH
 
 mutable struct LassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: RegularizationPath{S,T}
