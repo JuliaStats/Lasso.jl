@@ -15,13 +15,13 @@ using Reexport, LinearAlgebra, SparseArrays, Random, .Util, MLBase
 import Random: Sampler
 @reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
 using GLM: FPVector, LinPred, Link, LmResp, GlmResp, DensePredQR, updateμ!,
-    linkfun, linkinv
+    linkfun, linkinv, LinPredModel
 export RegularizationPath, LassoPath, GammaLassoPath, NaiveCoordinateDescent,
        CovarianceCoordinateDescent, fit, fit!, coef, predict,
        minAICc, hasintercept, dof, aicc, distfun, linkfun, cross_validate_path,
        SegSelect, segselect, selectmodel,
        AllSeg, MinAIC, MinAICc, MinBIC, CVSegSelect, MinCVmse, MinCV1se,
-       LassoModel, GammaLassoModel
+       RegularizedModel, LassoModel, GammaLassoModel
 
 
 ## HELPERS FOR SPARSE COEFFICIENTS

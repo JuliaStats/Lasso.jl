@@ -115,7 +115,7 @@ segselect(path::RegularizationPath,
            kwargs...) where {T<:AbstractFloat,V<:FPVector, S<:CVSegSelect} =
     cross_validate_path(path, X, y, select; kwargs...)
 
-"A RegularizedModel represents selected segment from a RegularizationPath"
+"A RegularizedModel represents a selected segment from a RegularizationPath"
 abstract type RegularizedModel <: RegressionModel end
 
 "LassoModel represents a selected segment from a LassoPath"
