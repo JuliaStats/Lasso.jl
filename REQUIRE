@@ -1,7 +1,0 @@
-julia 0.7
-StatsBase
-Distributions
-GLM
-Reexport
-MLBase
-DSP
