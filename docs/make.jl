@@ -1,4 +1,4 @@
-using Documenter, Lasso
+using Documenter, Lasso, MLBase
 
 makedocs(
     modules = [Lasso],
