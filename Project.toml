@@ -1,6 +1,6 @@
 name = "Lasso"
 uuid = "b4fcebef-c861-5a0f-a7e2-ba9dc32b180a"
-version = "0.4.0"
+version = "0.4.1"
 
 [deps]
 DSP = "717857b8-e6f2-59f4-9121-6e50c889abd2"
@@ -12,9 +12,12 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
+StatsModels = "3eaba693-59b7-5ba5-a881-562e759f1c8d"
 
 [compat]
-julia = "≥ 0.7.0"
+GLM = "1.2"
+StatsModels = "0.4, 0.5"
+julia = "0.7, 1"
 
 [extras]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
