@@ -315,7 +315,7 @@ function build_model(X::AbstractMatrix{T}, y::FPVector, d::UnivariateDistributio
     # Fit to find null deviance
     # Maybe we should reuse this GlmResp object?
     nullmodel = fit(GeneralizedLinearModel, nullX(X, intercept, ω), y, d, l;
-                    wts=wts, offset=offset, convTol=irls_tol, dofit=dofit)
+                    wts=wts, offset=offset, rtol=irls_tol, dofit=dofit)
     nulldev = deviance(nullmodel)
     nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
 
