@@ -284,7 +284,7 @@ newglm(m::GeneralizedLinearModel, pp) = GeneralizedLinearModel(m.rr, pp, true)
 # don't add an intercept when using a @formula because we use the intercept keyword arg to add an intercept
 StatsModels.drop_intercept(::Type{R}) where R<:RegularizedModel = true
 
-StatsModels.@delegate StatsModels.DataFrameRegressionModel.model [segselect, MinCVmse, MinCV1se]
+StatsModels.@delegate StatsModels.TableRegressionModel.model [segselect, MinCVmse, MinCV1se]
 for modeltype in (:LassoModel, :GammaLassoModel)
     @eval begin
         StatsModels.@delegate $modeltype.lpm [StatsBase.coef, StatsBase.confint,

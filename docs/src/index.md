@@ -41,9 +41,9 @@ julia> data = DataFrame(X=[1,2,3], Y=[2,4,7])
 │ 3   │ 3     │ 7     │
 
 julia> m = fit(LassoModel, @formula(Y ~ X), data)
-StatsModels.DataFrameRegressionModel{LassoModel{LinearModel{GLM.LmResp{Array{Float64,1}},GLM.DensePredQR{Float64}}},Array{Float64,2}}
+StatsModels.TableRegressionModel{LassoModel{LinearModel{GLM.LmResp{Array{Float64,1}},GLM.DensePredQR{Float64}}},Array{Float64,2}}
 
-Formula: Y ~ +X
+Y ~ X
 
 Coefficients:
 ──────────────────────────────────────────────────────────────────
