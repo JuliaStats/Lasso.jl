@@ -41,7 +41,7 @@ Random.seed!(243214)
                 gcoefs = readcsvmat(joinpath(datapath,"gamlr.$family.$fitname.coefs.csv");types=[Float64 for i=1:100])
                 family = prms[1,Symbol("fit.family")]
                 γ = prms[1,Symbol("fit.gamma")]
-                λ = nothing #convert(Vector{Float64},fittable[Symbol("fit.lambda")]) # should be set to nothing evenatually
+                λ = nothing #convert(Vector{Float64},fittable[!, Symbol("fit.lambda")]) # should be set to nothing evenatually
 
                 # fit julia version
                 glp = fit(GammaLassoPath, X, y, dist, link; γ=γ, stopearly=false,
@@ -49,23 +49,23 @@ Random.seed!(243214)
                     standardize=false, standardizeω=false)
 
                 # compare
-                @test true==issimilarhead(glp.λ,fittable[Symbol("fit.lambda")];rtol=rtol)
-                @test true==issimilarhead(glp.b0,fittable[Symbol("fit.alpha")];rtol=rtol)
+                @test true==issimilarhead(glp.λ,fittable[!, Symbol("fit.lambda")];rtol=rtol)
+                @test true==issimilarhead(glp.b0,fittable[!, Symbol("fit.alpha")];rtol=rtol)
                 @test true==issimilarhead(convert(Matrix{Float64},glp.coefs'),gcoefs';rtol=rtol)
                 # we follow GLM.jl convention where deviance is scaled by nobs, while in gamlr it is not
-                @test true==issimilarhead(deviance(glp),fittable[Symbol("fit.deviance")]/nobs(glp);rtol=rtol)
-                @test true==issimilarhead(deviance(glp,X,y),fittable[Symbol("fit.deviance")]/nobs(glp);rtol=rtol)
+                @test true==issimilarhead(deviance(glp),fittable[!, Symbol("fit.deviance")]/nobs(glp);rtol=rtol)
+                @test true==issimilarhead(deviance(glp,X,y),fittable[!, Symbol("fit.deviance")]/nobs(glp);rtol=rtol)
                 # @test true==issimilarhead(round(df(glp)[2:end]),round(fittable[2:end,Symbol("fit.df")]))
-                @test true==issimilarhead(loglikelihood(glp),fittable[Symbol("fit.logLik")];rtol=rtol)
-                @test true==issimilarhead(aicc(glp),fittable[Symbol("fit.AICc")];rtol=rtol)
+                @test true==issimilarhead(loglikelihood(glp),fittable[!, Symbol("fit.logLik")];rtol=rtol)
+                @test true==issimilarhead(aicc(glp),fittable[!, Symbol("fit.AICc")];rtol=rtol)
 
                 # TODO: figure out why these are so off, maybe because most are corner solutions
                 # and stopping rules for lambda are different
                 # # what we really need all these stats for is that the AICc identifies the same minima:
-                # if argmin(aicc(glp)) != lastindex(aicc(glp)) && argmin(fittable[Symbol("fit.AICc")]) != lastindex(fittable[Symbol("fit.AICc")])
+                # if argmin(aicc(glp)) != lastindex(aicc(glp)) && argmin(fittable[!, Symbol("fit.AICc")]) != lastindex(fittable[!, Symbol("fit.AICc")])
                 #     # interior minima
                 #     println("comparing intereior AICc")
-                #     @test argmin(aicc(glp)) == argmin(fittable[Symbol("fit.AICc")])
+                #     @test argmin(aicc(glp)) == argmin(fittable[!, Symbol("fit.AICc")])
                 # end
 
                 # comparse CV, NOTE: this involves a random choice of train subsamples
@@ -116,7 +116,7 @@ end
 # gcoefs = readcsvmat(joinpath(datapath,"gamlr.$family.$fitname.coefs.csv");types=[Float64 for i=1:100])
 # family = prms[1,Symbol("fit.family")]
 # γ = prms[1,Symbol("fit.gamma")]
-# λ = nothing #convert(Vector{Float64},fittable[Symbol("fit.lambda")]) # should be set to nothing evenatually
+# λ = nothing #convert(Vector{Float64},fittable[!, Symbol("fit.lambda")]) # should be set to nothing evenatually
 #
 # # fit julia version
 # glp = fit(GammaLassoPath, X, y, dist, link; γ=γ, stopearly=false,
@@ -156,23 +156,23 @@ end
 # predict(m)
 #
 # # compare
-# @test true==issimilarhead(glp.λ,fittable[Symbol("fit.lambda")];rtol=rtol)
-# @test true==issimilarhead(glp.b0,fittable[Symbol("fit.alpha")];rtol=rtol)
+# @test true==issimilarhead(glp.λ,fittable[!, Symbol("fit.lambda")];rtol=rtol)
+# @test true==issimilarhead(glp.b0,fittable[!, Symbol("fit.alpha")];rtol=rtol)
 # @test true==issimilarhead(convert(Matrix{Float64},glp.coefs'),gcoefs';rtol=rtol)
 # # we follow GLM.jl convention where deviance is scaled by nobs, while in gamlr it is not
-# @test true==issimilarhead(deviance(glp),fittable[Symbol("fit.deviance")]/nobs(glp);rtol=rtol)
-# @test true==issimilarhead(deviance(glp,X,y),fittable[Symbol("fit.deviance")]/nobs(glp);rtol=rtol)
+# @test true==issimilarhead(deviance(glp),fittable[!, Symbol("fit.deviance")]/nobs(glp);rtol=rtol)
+# @test true==issimilarhead(deviance(glp,X,y),fittable[!, Symbol("fit.deviance")]/nobs(glp);rtol=rtol)
 # # @test true==issimilarhead(round(df(glp)[2:end]),round(fittable[2:end,Symbol("fit.df")]))
-# @test true==issimilarhead(loglikelihood(glp),fittable[Symbol("fit.logLik")];rtol=rtol)
-# @test true==issimilarhead(aicc(glp),fittable[Symbol("fit.AICc")];rtol=rtol)
+# @test true==issimilarhead(loglikelihood(glp),fittable[!, Symbol("fit.logLik")];rtol=rtol)
+# @test true==issimilarhead(aicc(glp),fittable[!, Symbol("fit.AICc")];rtol=rtol)
 #
 # # TODO: figure out why these are so off, maybe because most are corner solutions
 # # and stopping rules for lambda are different
 # # # what we really need all these stats for is that the AICc identifies the same minima:
-# # if argmin(aicc(glp)) != lastindex(aicc(glp)) && argmin(fittable[Symbol("fit.AICc")]) != lastindex(fittable[Symbol("fit.AICc")])
+# # if argmin(aicc(glp)) != lastindex(aicc(glp)) && argmin(fittable[!, Symbol("fit.AICc")]) != lastindex(fittable[!, Symbol("fit.AICc")])
 # #     # interior minima
 # #     println("comparing intereior AICc")
-# #     @test argmin(aicc(glp)) == argmin(fittable[Symbol("fit.AICc")])
+# #     @test argmin(aicc(glp)) == argmin(fittable[!, Symbol("fit.AICc")])
 # # end
 #
 # # comparse CV, NOTE: this involves a random choice of train subsamples

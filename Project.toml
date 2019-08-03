@@ -1,6 +1,6 @@
 name = "Lasso"
 uuid = "b4fcebef-c861-5a0f-a7e2-ba9dc32b180a"
-version = "0.4.1"
+version = "0.5.0"
 
 [deps]
 DSP = "717857b8-e6f2-59f4-9121-6e50c889abd2"
@@ -15,19 +15,18 @@ StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 StatsModels = "3eaba693-59b7-5ba5-a881-562e759f1c8d"
 
 [compat]
-GLM = "1.2"
-StatsModels = "0.4, 0.5"
+GLM = "1.3"
+StatsModels = "0.6"
 julia = "0.7, 1"
 
 [extras]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 GLMNet = "8d5ece8b-de18-5317-b113-243142960cc6"
-InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["CSV", "InteractiveUtils", "LinearAlgebra", "GLMNet", "DataFrames", "Random", "SparseArrays", "Test"]
+test = ["CSV", "LinearAlgebra", "GLMNet", "DataFrames", "Random", "SparseArrays", "Test"]
