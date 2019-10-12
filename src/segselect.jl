@@ -169,6 +169,7 @@ selectmodel(path, MinCVmse(path, 5))   # 5-fold CV mse minimizing model
 function selectmodel(path::R, select::SegSelect) where R<:RegularizationPath
     # extract reusable path parts
     m = path.m
+    rr = deepcopy(m.rr)
     pp = m.pp
     X = pp.X
 
@@ -186,11 +187,11 @@ function selectmodel(path::R, select::SegSelect) where R<:RegularizationPath
     segpp = DensePredQR(segX, beta0)
 
     # rescale weights, which in GLM sum to nobs
-    m.rr.wts .*= nobs(path)
+    rr.wts .*= nobs(path)
 
     # same things GLM does to init just before fit!
     GLM.installbeta!(segpp)
-    updateμ!(m.rr, linpred(segpp, zero(eltype(m.rr.y))))
+    updateμ!(rr, linpred(segpp, zero(eltype(rr.y))))
 
     # create a LinearModel or GeneralizedLinearModel with the new linear predictor
     newglm(m, segpp)
