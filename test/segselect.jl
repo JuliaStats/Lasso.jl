@@ -1,5 +1,17 @@
 # tests for segment selection and StatsModels @formula+df interface
 using Random
+
+"Tests whether the output of `show(expr)` converted to String contains `expected`"
+macro test_show(expr, expected)
+    s = quote
+        local o = IOBuffer()
+        show(o, $expr)
+        String(take!(o))
+    end
+    substr = quote $expected end
+    :(@test occursin($(esc(substr)), $(esc(s))))
+end
+
 @testset "segment/model selection" begin
 
 datapath = joinpath(dirname(@__FILE__), "data")
@@ -32,6 +44,8 @@ datapath = joinpath(dirname(@__FILE__), "data")
                 else
                     @test pathpredict == GLM.predict(m, data; offset=offset)
                 end
+
+                @test_show m string(L)
             end
         end
     end

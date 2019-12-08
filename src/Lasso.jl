@@ -14,7 +14,7 @@ include("TrendFiltering.jl")
 using Reexport, LinearAlgebra, SparseArrays, Random, .Util, MLBase
 import Random: Sampler
 @reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
-using GLM: FPVector, LinPred, Link, LmResp, GlmResp, DensePredQR, updateμ!,
+using GLM: FPVector, LinPred, Link, LmResp, GlmResp, cholpred, updateμ!,
     linkfun, linkinv, LinPredModel
 export RegularizationPath, LassoPath, GammaLassoPath, NaiveCoordinateDescent,
        CovarianceCoordinateDescent, fit, fit!, coef, predict,
