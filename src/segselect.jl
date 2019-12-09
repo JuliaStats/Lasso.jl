@@ -142,7 +142,7 @@ Predicted values using a selected segment of a regularization path.
 m = fit(LassoModel, X, y; select=MinBIC())
 predict(m, newX)     # predict using BIC minimizing segment
 """
-function StatsBase.predict(m::RegularizedModel, newX::AbstractMatrix{T}; kwargs...) where {T<:AbstractFloat}
+function StatsBase.predict(m::RegularizedModel, newX::AbstractMatrix{T}; kwargs...) where T
     # add an interecept to newX if the model has one
     if m.intercept
         newX = [ones(T,size(newX,1),1) newX]

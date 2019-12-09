@@ -53,11 +53,16 @@ x2  0.222093
 
 julia> predict(m)
 3-element Array{Float64,1}:
- 4.161154511001072
- 4.433161908091373
- 4.705169305181673
+ 4.111240223622052
+ 4.333333333333333
+ 4.555426443044614
 
+julia> predict(m, data[2:end,:])
+2-element Array{Union{Missing, Float64},1}:
+ 4.333333333333333
+ 4.555426443044614
 ```
+
 To get an entire Lasso regularization path with default parameters:
 
 ```julia
