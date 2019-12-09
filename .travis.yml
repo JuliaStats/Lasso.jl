@@ -4,7 +4,7 @@ os:
   - osx
 julia:
   - 1.0
-  - 1.1
+  - 1.3
   - nightly
 notifications:
   email: false
@@ -17,8 +17,7 @@ before_install:
   - if [ $TRAVIS_OS_NAME = linux ]; then
       sudo apt-get install gfortran -y;
     else
-      brew cask uninstall oclint;
-      brew install gcc;
+      brew update && brew install gcc;
     fi
 
 after_success:
@@ -27,7 +26,7 @@ after_success:
 jobs:
   include:
     - stage: "Documentation"
-      julia: 1.1
+      julia: 1.3
       os: linux
       script:
         - julia --project=docs/ -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
