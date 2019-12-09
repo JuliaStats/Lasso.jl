@@ -42,10 +42,10 @@ datapath = joinpath(dirname(@__FILE__), "data")
 
                 @test pathcoefs == coef(m)
                 if isa(dist, Normal)
-                    @test pathpredict == predict(m, data) + offset
+                    @test pathpredict ≈ predict(m, data) + offset
                     @test pathpredict ≈ predict(m)
                 else
-                    @test pathpredict == predict(m, data; offset=offset)
+                    @test pathpredict ≈ predict(m, data; offset=offset)
                     @test pathpredict ≈ predict(m)
                 end
 
