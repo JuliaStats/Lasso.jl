@@ -597,6 +597,20 @@ function StatsBase.predict(path::RegularizationPath, newX::AbstractMatrix{T}; of
     end
 end
 
+"predicted values for data used to estimate `path`"
+function StatsBase.predict(path::RegularizationPath; select=AllSeg())
+    X = path.m.pp.X 
+    offset = path.m.rr.offset
+
+    # destandardize X if needed
+    if !isempty(path.Xnorm)
+        X = X ./ transpose(path.Xnorm)
+    end
+
+    predict(path, X; offset=offset, select=select)
+end
+
+
 "distribution of underlying GLM"
 distfun(path::RegularizationPath{M}) where {M<:LinearModel} = Normal()
 distfun(path::RegularizationPath) = path.m.rr.d

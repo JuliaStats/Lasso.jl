@@ -1,5 +1,6 @@
 # tests for segment selection and StatsModels @formula+df interface
 using Random
+using GLM: predict
 
 "Tests whether the output of `show(expr)` converted to String contains `expected`"
 macro test_show(expr, expected)
@@ -37,12 +38,15 @@ datapath = joinpath(dirname(@__FILE__), "data")
 
                 Random.seed!(421)
                 pathpredict = Lasso.predict(path, data; select=select, offset=offset)
+                @test pathpredict ≈ Lasso.predict(path; select=select)
 
                 @test pathcoefs == coef(m)
                 if isa(dist, Normal)
-                    @test pathpredict == GLM.predict(m, data) + offset
+                    @test pathpredict == predict(m, data) + offset
+                    @test pathpredict ≈ predict(m)
                 else
-                    @test pathpredict == GLM.predict(m, data; offset=offset)
+                    @test pathpredict == predict(m, data; offset=offset)
+                    @test pathpredict ≈ predict(m)
                 end
 
                 @test_show m string(L)

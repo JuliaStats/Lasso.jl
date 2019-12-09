@@ -173,7 +173,12 @@ function selectmodel(path::R, select::SegSelect) where R<:RegularizationPath
     m = path.m
     rr = deepcopy(m.rr)
     pp = m.pp
-    X = pp.X
+    X = pp.X 
+    
+    # destandardize X if needed
+    if !isempty(path.Xnorm)
+        X = X ./ transpose(path.Xnorm)
+    end
 
     # add an interecept to X if the model has one
     if hasintercept(path)
@@ -188,23 +193,16 @@ function selectmodel(path::R, select::SegSelect) where R<:RegularizationPath
     # create new linear predictor
     pivot = true
     p = cholpred(segX, pivot)
-    # p.beta0 = beta0
 
     # rescale weights, which in GLM sum to nobs
     rr.wts .*= nobs(path)
 
     # same things GLM does to init just before fit!
     lp = rr.mu
-    # GLM.installbeta!(p)
-    # linpred!(lp, p, 0)
-    # updateμ!(rr, lp)
-
     copy!(p.beta0, beta0)
     fill!(p.delbeta, 0)
     GLM.linpred!(lp, p, 0)
     updateμ!(rr, lp)
-
-    # updateμ!(rr, linpred(p, zero(eltype(rr.y))))
 
     # create a LinearModel or GeneralizedLinearModel with the new linear predictor
     newglm(m, rr, p)
