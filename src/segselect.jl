@@ -199,7 +199,7 @@ function selectmodel(path::R, select::SegSelect) where R<:RegularizationPath
 
     # same things GLM does to init just before fit!
     lp = rr.mu
-    copy!(p.beta0, beta0)
+    copyto!(p.beta0, beta0)
     fill!(p.delbeta, 0)
     GLM.linpred!(lp, p, 0)
     updateμ!(rr, lp)
