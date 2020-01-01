@@ -16,8 +16,6 @@ matrix:
 before_install:
   - if [ $TRAVIS_OS_NAME = linux ]; then
       sudo apt-get install gfortran -y;
-    else
-      brew update && brew install gcc;
     fi
 
 after_success:
