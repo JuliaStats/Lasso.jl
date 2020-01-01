@@ -41,30 +41,28 @@ julia> data = DataFrame(X=[1,2,3], Y=[2,4,7])
 │ 3   │ 3     │ 7     │
 
 julia> m = fit(LassoModel, @formula(Y ~ X), data)
-StatsModels.TableRegressionModel{LassoModel{LinearModel{GLM.LmResp{Array{Float64,1}},GLM.DensePredQR{Float64}}},Array{Float64,2}}
-
-Y ~ X
+LassoModel using MinAICc(2) segment of the regulatization path.
 
 Coefficients:
-──────────────────────────────────────────────────────────────────
-    Estimate  Std. Error   t value  Pr(>|t|)  Lower 95%  Upper 95%
-──────────────────────────────────────────────────────────────────
-x1  3.88915      4.86043  0.800166    0.5704   -57.8684    65.6467
-x2  0.222093     1.83707  0.120895    0.9234   -23.1201    23.5643
-──────────────────────────────────────────────────────────────────
-
-julia> stderror(m)
-2-element Array{Float64,1}:
- 4.860427341926979
- 1.8370688588910695
+────────────
+    Estimate
+────────────
+x1  3.88915 
+x2  0.222093
+────────────
 
 julia> predict(m)
 3-element Array{Float64,1}:
- 4.161154511001072
- 4.433161908091373
- 4.705169305181673
+ 4.111240223622052
+ 4.333333333333333
+ 4.555426443044614
 
+julia> predict(m, data[2:end,:])
+2-element Array{Union{Missing, Float64},1}:
+ 4.333333333333333
+ 4.555426443044614
 ```
+
 To get an entire Lasso regularization path with default parameters:
 
 ```julia

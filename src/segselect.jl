@@ -119,15 +119,17 @@ segselect(path::RegularizationPath,
 abstract type RegularizedModel <: RegressionModel end
 
 "LassoModel represents a selected segment from a LassoPath"
-struct LassoModel{M<:LinPredModel} <: RegularizedModel
+struct LassoModel{M<:LinPredModel, S<:SegSelect} <: RegularizedModel
     lpm::M          # underlying GLM
     intercept::Bool # whether path added an intercept
+    select::S       # segment selector
 end
 
 "GammaLassoModel represents a selected segment from a GammaLassoPath"
-struct GammaLassoModel{M<:LinPredModel} <: RegularizedModel
+struct GammaLassoModel{M<:LinPredModel, S<:SegSelect} <: RegularizedModel
     lpm::M          # underlying GLM
     intercept::Bool # whether path added an intercept
+    select::S       # segment selector
 end
 
 """
@@ -140,7 +142,7 @@ Predicted values using a selected segment of a regularization path.
 m = fit(LassoModel, X, y; select=MinBIC())
 predict(m, newX)     # predict using BIC minimizing segment
 """
-function StatsBase.predict(m::RegularizedModel, newX::AbstractMatrix{T}; kwargs...) where {T<:AbstractFloat}
+function StatsBase.predict(m::RegularizedModel, newX::AbstractMatrix{T}; kwargs...) where T
     # add an interecept to newX if the model has one
     if m.intercept
         newX = [ones(T,size(newX,1),1) newX]
@@ -169,8 +171,14 @@ selectmodel(path, MinCVmse(path, 5))   # 5-fold CV mse minimizing model
 function selectmodel(path::R, select::SegSelect) where R<:RegularizationPath
     # extract reusable path parts
     m = path.m
+    rr = deepcopy(m.rr)
     pp = m.pp
-    X = pp.X
+    X = pp.X 
+    
+    # destandardize X if needed
+    if !isempty(path.Xnorm)
+        X = X ./ transpose(path.Xnorm)
+    end
 
     # add an interecept to X if the model has one
     if hasintercept(path)
@@ -183,17 +191,21 @@ function selectmodel(path::R, select::SegSelect) where R<:RegularizationPath
     beta0 = Vector{Float64}(coef(path, select))
 
     # create new linear predictor
-    segpp = DensePredQR(segX, beta0)
+    pivot = true
+    p = cholpred(segX, pivot)
 
     # rescale weights, which in GLM sum to nobs
-    m.rr.wts .*= nobs(path)
+    rr.wts .*= nobs(path)
 
     # same things GLM does to init just before fit!
-    GLM.installbeta!(segpp)
-    updateμ!(m.rr, linpred(segpp, zero(eltype(m.rr.y))))
+    lp = rr.mu
+    copyto!(p.beta0, beta0)
+    fill!(p.delbeta, 0)
+    GLM.linpred!(lp, p, 0)
+    updateμ!(rr, lp)
 
     # create a LinearModel or GeneralizedLinearModel with the new linear predictor
-    newglm(m, segpp)
+    newglm(m, rr, p)
 end
 
 """
@@ -275,11 +287,11 @@ function StatsBase.fit(::Type{R}, X::AbstractMatrix{T}, y::V,
     M = pathtype(R)
     path = fit(M, X, y, d, l; intercept=intercept, kwargs...)
 
-    R(selectmodel(path, select), intercept)
+    R(selectmodel(path, select), intercept, select)
 end
 
-newglm(m::LinearModel, pp) = LinearModel(m.rr, pp)
-newglm(m::GeneralizedLinearModel, pp) = GeneralizedLinearModel(m.rr, pp, true)
+newglm(m::LinearModel, rr, pp) = LinearModel(rr, pp)
+newglm(m::GeneralizedLinearModel, rr, pp) = GeneralizedLinearModel(rr, pp, true)
 
 # don't add an intercept when using a @formula because we use the intercept keyword arg to add an intercept
 StatsModels.drop_intercept(::Type{R}) where R<:RegularizedModel = true
@@ -291,9 +303,7 @@ for modeltype in (:LassoModel, :GammaLassoModel)
                                      StatsBase.deviance, StatsBase.nulldeviance,
                                      StatsBase.loglikelihood, StatsBase.nullloglikelihood,
                                      StatsBase.dof, StatsBase.dof_residual, StatsBase.nobs,
-                                     StatsBase.stderror, StatsBase.vcov,
-                                     StatsBase.residuals, StatsBase.response,
-                                     StatsBase.coeftable
+                                     StatsBase.residuals, StatsBase.response
                                      ]
     end
 end
@@ -306,3 +316,19 @@ StatsBase.fit(::Type{M},
     d::UnivariateDistribution=Normal(),
     l::Link=canonicallink(d); kwargs...) where {M<:Union{RegularizationPath, RegularizedModel}} =
     fit(M, float(X), float(y), d, l; kwargs...)
+
+function coeftable(mm::RegularizedModel)
+    cc = coef(mm)
+    CoefTable([cc],
+                ["Estimate"],
+                ["x$i" for i = 1:size(mm.lpm.pp.X, 2)])
+end
+    
+function Base.show(io::IO, obj::RegularizedModel)
+    # prefix = isa(obj.m, GeneralizedLinearModel) ? string(typeof(distfun(path)).name.name, " ") : ""
+    println(io, "$(typeof(obj).name.name) using $(obj.select) segment of the regulatization path.")
+
+    println(io, "\nCoefficients:\n", coeftable(obj))
+end
+
+StatsBase.vcov(obj::RegularizedModel, args...) = error("variance-covariance matrix for a regularized model is not yet implemented")

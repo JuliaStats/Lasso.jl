@@ -73,17 +73,15 @@ julia> data = DataFrame(X=[1,2,3], Y=[2,4,7])
 │ 3   │ 3     │ 7     │
 
 julia> m = fit(LassoModel, @formula(Y ~ X), data; select=MinCVmse(Kfold(3,2)))
-StatsModels.TableRegressionModel{LassoModel{LinearModel{GLM.LmResp{Array{Float64,1}},GLM.DensePredQR{Float64}}},Array{Float64,2}}
-
-Y ~ X
+LassoModel using MinCVmse(Kfold([3, 1, 2], 2, 1.5)) segment of the regulatization path.
 
 Coefficients:
-──────────────────────────────────────────────────────────────────
-    Estimate  Std. Error   t value  Pr(>|t|)  Lower 95%  Upper 95%
-──────────────────────────────────────────────────────────────────
-x1   4.33333      5.4365  0.797081    0.5716   -64.744     73.4106
-x2   0.0          2.0548  0.0         1.0000   -26.1088    26.1088
-──────────────────────────────────────────────────────────────────
+────────────
+    Estimate
+────────────
+x1   4.33333
+x2   0.0    
+────────────
 
 julia> coef(m)
 2-element Array{Float64,1}:

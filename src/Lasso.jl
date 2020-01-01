@@ -14,7 +14,7 @@ include("TrendFiltering.jl")
 using Reexport, LinearAlgebra, SparseArrays, Random, .Util, MLBase
 import Random: Sampler
 @reexport using GLM, Distributions, .FusedLassoMod, .TrendFiltering
-using GLM: FPVector, LinPred, Link, LmResp, GlmResp, DensePredQR, updateμ!,
+using GLM: FPVector, LinPred, Link, LmResp, GlmResp, cholpred, updateμ!,
     linkfun, linkinv, LinPredModel
 export RegularizationPath, LassoPath, GammaLassoPath, NaiveCoordinateDescent,
        CovarianceCoordinateDescent, fit, fit!, coef, predict,
@@ -596,6 +596,20 @@ function StatsBase.predict(path::RegularizationPath, newX::AbstractMatrix{T}; of
         map(μ, eta)
     end
 end
+
+"predicted values for data used to estimate `path`"
+function StatsBase.predict(path::RegularizationPath; select=AllSeg())
+    X = path.m.pp.X 
+    offset = path.m.rr.offset
+
+    # destandardize X if needed
+    if !isempty(path.Xnorm)
+        X = X ./ transpose(path.Xnorm)
+    end
+
+    predict(path, X; offset=offset, select=select)
+end
+
 
 "distribution of underlying GLM"
 distfun(path::RegularizationPath{M}) where {M<:LinearModel} = Normal()
