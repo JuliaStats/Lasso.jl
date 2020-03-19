@@ -178,8 +178,8 @@ mutable struct LassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: Regu
     b0::Vector{T}                 # model intercepts
     niter::Int                    # number of coordinate descent iterations
 
-    LassoPath{S,T}(m, nulldev::T, nullb0::T, λ::Vector{T}, autoλ::Bool, Xnorm::Vector{T}) where {S,T} =
-        new(m, nulldev, nullb0, λ, autoλ, Xnorm)
+    LassoPath{S,T}(m, nulldev, nullb0, λ, autoλ, Xnorm) where {S,T} =
+        new{S,T}(m, nulldev, nullb0, λ, autoλ, Xnorm)
 end
 
 function Base.show(io::IO, path::RegularizationPath)
@@ -213,20 +213,14 @@ function computeλ(λmax, λminratio, α, nλ)
     exp.(range(logλmax, stop=logλmax + log(λminratio), length=nλ))
 end
 
-# Compute automatic λ values based on X'y and λminratio without weights ω
-function computeλ(Xy::Vector{T}, λminratio, α, nλ, ω::Nothing) where T
-    λmax = zero(T)
-    for i = eachindex(Xy)
-        x = abs(Xy[i])
-        if x > λmax
-            λmax = x
-        end
-    end
-    computeλ(λmax, λminratio, α, nλ)
-end
+"""
+    λmax = computeλmax(Xy)
+    λmax = computeλmax(Xy, ω)
 
-# Compute automatic λ values based on X'y and λminratio with specific weights ω
-function computeλ(Xy::Vector{T}, λminratio, α, nλ, ω::Vector) where T
+Compute the maximum value of `λ` (when using automatic `λ`) based on `X'y`, optionally with weights `ω`.
+"""
+computeλmax(Xy::AbstractVector, ω::Nothing=nothing) = maximum(abs, Xy)
+function computeλmax(Xy::AbstractVector{T}, ω::AbstractVector) where T
     λmax = zero(T)
     for i = eachindex(Xy)
         if ω[i] > 0
@@ -236,6 +230,12 @@ function computeλ(Xy::Vector{T}, λminratio, α, nλ, ω::Vector) where T
             end
         end
     end
+    return λmax
+end
+
+# Compute automatic λ values based on X'y and λminratio
+function computeλ(Xy::AbstractVector, λminratio, α, nλ, ω)
+    λmax = computeλmax(Xy, ω)
     computeλ(λmax, λminratio, α, nλ)
 end
 
@@ -256,8 +256,16 @@ function weightedresiduals(model::LinearModel)
 end
 
 # NOTE: mutates nullmodel
-maxλ!(nullmodel, λ::Vector, X::AbstractMatrix{T}, λminratio, α, nλ, ω) where T =
+maxλ!(nullmodel, λ::AbstractVector, X::AbstractMatrix{T}, λminratio, α, nλ, ω) where T =
     convert(Vector{T}, λ)
+
+function maxλ!(nullmodel::LinearModel, λ::Function,
+    X::AbstractMatrix{T}, λminratio, α, nλ, ω) where T
+
+    Xy = X'*weightedresiduals(nullmodel)
+    λmax = computeλmax(Xy, ω)
+    return λ(λmax)
+end
 
 function maxλ!(nullmodel::LinearModel, λ::Nothing,
     X::AbstractMatrix{T}, λminratio, α, nλ, ω) where T
@@ -275,6 +283,14 @@ function maxλ!(nullmodel::GeneralizedLinearModel, λ::Nothing,
     computeλ(Xy, λminratio, α, nλ, ω)
 end
 
+function maxλ!(nullmodel::GeneralizedLinearModel, λ::Function,
+    X::AbstractMatrix{T}, λminratio, α, nλ, ω) where T
+
+    Xy = X'*broadcast!(*, nullmodel.rr.wrkresid, nullmodel.rr.wrkresid, nullmodel.rr.wrkwt)
+    λmax = computeλmax(Xy, ω)
+    return λ(λmax)
+end
+
 # rescales A so that it sums to base
 rescale(A, base) = A * (base / sum(A))
 
@@ -289,7 +305,7 @@ end
 
 # version for Linear models
 function build_model(X::AbstractMatrix{T}, y::FPVector, d::Normal, l::IdentityLink,
-                     lp::LinPred, λminratio::Real, λ::Union{Vector,Nothing},
+                     lp::LinPred, λminratio::Real, λ::Union{AbstractVector,Function,Nothing},
                      wts::Union{FPVector,Nothing}, offset::Vector, α::Real, nλ::Int,
                      ω::Union{Vector,Nothing}, intercept::Bool, irls_tol::Real, dofit::Bool) where T
     mu = isempty(offset) ? copy(y) : y + offset
@@ -309,7 +325,7 @@ end
 
 # version for GLMs
 function build_model(X::AbstractMatrix{T}, y::FPVector, d::UnivariateDistribution, l::Link,
-                     lp::LinPred, λminratio::Real, λ::Union{Vector,Nothing},
+                     lp::LinPred, λminratio::Real, λ::Union{AbstractVector,Function,Nothing},
                      wts::Union{FPVector,Nothing}, offset::Vector, α::Real, nλ::Int,
                      ω::Union{Vector, Nothing}, intercept::Bool, irls_tol::Real, dofit::Bool) where T
     # Fit to find null deviance
@@ -379,9 +395,11 @@ fit(LassoPath, X, y, Binomial(), Logit();
 - `wts=ones(length(y))`: Weights for each observation
 - `offset=zeros(length(y))`: Offset of each observation
 - `λ`: can be used to specify a specific set of λ values at which models are fit.
-    If λ is unspecified, Lasso.jl selects nλ logarithmically spaced λ values from
-    `λmax`, the smallest λ value yielding a null model, to
-    `λminratio * λmax`.
+    You can pass an `AbstractVector` of explicit values for `λ`, or a function
+    `λfunc(λmax)` returning such values, where `λmax` will be the smallest `λ`
+    value yielding a null model.
+    If `λ` is unspecified, Lasso.jl selects `nλ` logarithmically spaced `λ` values from
+    `λmax` to `λminratio * λmax`.
 - `nλ=100` number of λ values to use
 - `λminratio=1e-4` if more observations than predictors otherwise 0.001.
 - `stopearly=true`: When `true`, if the proportion of deviance explained
@@ -436,7 +454,7 @@ function StatsBase.fit(::Type{LassoPath},
                        offset::V=similar(y, 0),
                        α::Number=one(eltype(y)), nλ::Int=100,
                        λminratio::Number=ifelse(size(X, 1) < size(X, 2), 0.01, 1e-4),
-                       λ::Union{Vector,Nothing}=nothing, standardize::Bool=true,
+                       λ::Union{AbstractVector,Function,Nothing}=nothing, standardize::Bool=true,
                        intercept::Bool=true,
                        algorithm::Type=defaultalgorithm(d, l, size(X, 1), size(X, 2)),
                        dofit::Bool=true,
@@ -462,7 +480,7 @@ function StatsBase.fit(::Type{LassoPath},
     cd = algorithm{T,intercept,typeof(X),typeof(coefitr),typeof(ω)}(X, α, maxncoef, 1e-7, coefitr, ω)
 
     # GLM response initialization
-    autoλ = λ == nothing
+    autoλ = λ === nothing || isa(λ, Function)
     model, nulldev, nullb0, λ = build_model(X, y, d, l, cd, λminratio, λ, wts .* T(1/sum(wts)),
                                             Vector{T}(offset), α, nλ, ω, intercept, irls_tol, dofit)
 

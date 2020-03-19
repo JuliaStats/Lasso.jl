@@ -133,6 +133,15 @@ end
                                             end
                                             #     end
                                             # end
+                                            # With a function to generate λ
+                                            λfunc(λmax) = range(λmax, stop=g.lambda[end], length=3)
+                                            lf = fit(LassoPath, spfit ? sparse(X) : X, y, dist, link,
+                                                     λ=λfunc, algorithm=algorithm, intercept=intercept,
+                                                     cd_tol=cd_tol, irls_tol=irls_tol, criterion=criterion, randomize=randomize,
+                                                     α=alpha, offset=offset, penalty_factor=penalty_factor)
+                                            @test length(lf.λ) == 3
+                                            @test_skip all(iszero, lf.coefs[:,1])
+                                            @test lf.coefs[:,end] ≈ l.coefs[:,end]
                                         end
                                     end
                                 end
