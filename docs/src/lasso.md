@@ -1,11 +1,12 @@
 # Lasso paths
 
 ```@docs
-fit
+fit(::Type{LassoPath}, ::Matrix{Float64}, ::Vector{Float64})
 ```
 
 ## Returned objects
-``fit`` returns a `RegularizationPath` object describing the fit coefficients
+
+`fit` returns a `RegularizationPath` object describing the fit coefficients
 and values of λ along the path. The following fields are
 intended for external use:
 
@@ -23,8 +24,15 @@ Tibshirani, R. (2010). Regularization paths for generalized linear
 models via coordinate descent. Journal of Statistical Software,
 33(1), 1.
 
+## Gamma paths
+
+```@docs
+fit(::Type{GammaLassoPath}, ::Matrix{Float64}, ::Vector{Float64})
+```
+
 ## Using the model
-Lasso adhears to most of the `StatsBase` interface, so `coef` and `predict`
+
+Lasso adheres to most of the `StatsBase` interface, so `coef` and `predict`
 should work as expected, except that a particular segment of the path
 would need to be selected.
 
@@ -37,6 +45,7 @@ size
 ```
 
 ## Segment selectors
+
 ```@docs
 SegSelect
 segselect
@@ -50,6 +59,7 @@ AllSeg
 ```
 
 ## Lasso model fitting
+
 Often one wishes to both fit the path and select a particular segment.
 This can be done with `fit(RegularizedModel,...)`, which returns a fitted
 `RegularizedModel` wrapping a `GLM` representation of the selected model.
@@ -73,7 +83,7 @@ julia> data = DataFrame(X=[1,2,3], Y=[2,4,7])
 │ 3   │ 3     │ 7     │
 
 julia> m = fit(LassoModel, @formula(Y ~ X), data; select=MinCVmse(Kfold(3,2)))
-LassoModel using MinCVmse(Kfold([3, 1, 2], 2, 1.5)) segment of the regulatization path.
+LassoModel using MinCVmse(Kfold([3, 1, 2], 2, 1.5)) segment of the regularization path.
 
 Coefficients:
 ────────────
@@ -95,4 +105,5 @@ RegularizedModel
 LassoModel
 GammaLassoModel
 selectmodel
+fit(::Type{<:RegularizedModel}, ::Matrix{Float64}, ::Vector{Float64})
 ```

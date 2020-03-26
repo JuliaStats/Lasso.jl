@@ -360,13 +360,15 @@ end
 fits a linear or generalized linear Lasso path given the design
 matrix `X` and response `y`:
 
-``\underset{\beta}{\operatorname{argmin}} -\frac{1}{N} \mathcal{L}(y|X,\beta) + \lambda\left[(1-\alpha)\frac{1}{2}\|\beta\|_2^2 + \alpha\|\beta\|_1\right]``
+``\underset{\beta,b_0}{\operatorname{argmin}} -\frac{1}{N} \mathcal{L}(y|X,\beta,b_0) + \lambda\left[(1-\alpha)\frac{1}{2}\|\beta\|_2^2 + \alpha\|\beta\|_1\right]``
 
+where ``0 \le \alpha \le 1`` sets the balance between ridge (``\alpha = 0``)
+and lasso (``\alpha = 1``) regression, and ``N`` is the number of rows of ``X``.
 The optional argument `d` specifies the conditional distribution of
 response, while `l` specifies the link function. Lasso.jl inherits
 supported distributions and link functions from GLM.jl. The default
 is to fit an linear Lasso path, i.e., `d=Normal(), l=IdentityLink()`,
-or ``\mathcal{L}(y|X,\beta) = -\frac{1}{2}\|y - X\beta\|_2^2 + C``
+or ``\mathcal{L}(y|X,\beta) = -\frac{1}{2}\|y - X\beta - b_0\|_2^2 + C``
 
 # Examples
 ```julia
@@ -389,7 +391,7 @@ fit(LassoPath, X, y, Binomial(), Logit();
     values falls below `1e-5`, the path stops early.
 - `standardize=true`: Whether to standardize predictors to unit standard deviation
     before fitting.
-- `intercept=true`: Whether to fit an (unpenalized) model intercept.
+- `intercept=true`: Whether to fit an (unpenalized) model intercept ``b_0``. If false, ``b_0=0``.
 - `algorithm`: Algorithm to use.
     `NaiveCoordinateDescent` iteratively computes the dot product of the
     predictors with the  residuals, as opposed to the
@@ -410,16 +412,15 @@ fit(LassoPath, X, y, Binomial(), Logit();
     the inner loop.
 - `irls_tol=1e-7`: The tolerance for outer iteratively reweighted least squares
     iterations. This is ignored unless the model is a generalized linear model.
-- `criterion=:coef` Convergence criterion. Controls how ``cd_tol`` and ``irls_tol``
+- `criterion=:coef` Convergence criterion. Controls how `cd_tol` and `irls_tol`
     are to be interpreted. Possible values are:
-    - ``:coef``: The model is considered to have converged if the
-    the maximum absolute squared difference in coefficients
-    between successive iterations drops below the specified
-    tolerance. This is the criterion used by glmnet.
-    - ``:obj``: The model is considered to have converged if the
-    the relative change in the Lasso/Elastic Net objective
-    between successive iterations drops below the specified
-    tolerance. This is the criterion used by GLM.jl.
+    - `:coef`: The model is considered to have converged if the
+      the maximum absolute squared difference in coefficients
+      between successive iterations drops below the specified
+      tolerance. This is the criterion used by glmnet.
+    - `:obj`: The model is considered to have converged if the the relative change
+      in the Lasso/Elastic Net objective between successive iterations drops below
+      the specified tolerance. This is the criterion used by GLM.jl.
 - `minStepFac=0.001`: The minimum step fraction for backtracking line search.
 - `penalty_factor=ones(size(X, 2))`: Separate penalty factor ``\omega_j``
     for each coefficient ``j``, i.e. instead of ``\lambda`` penalties become

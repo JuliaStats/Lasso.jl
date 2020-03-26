@@ -27,8 +27,9 @@ Journal of Computational and Graphical Statistics, 26:3, 525-536.
 
 ## Quick start
 
-### Lasso (L1-penalized) Ordinary Least Squares Regression:
-```jldoctest
+### Lasso (L1-penalized) Ordinary Least Squares Regression
+
+```jldoctest demo1
 julia> using DataFrames, Lasso
 
 julia> data = DataFrame(X=[1,2,3], Y=[2,4,7])
@@ -39,9 +40,21 @@ julia> data = DataFrame(X=[1,2,3], Y=[2,4,7])
 │ 1   │ 1     │ 2     │
 │ 2   │ 2     │ 4     │
 │ 3   │ 3     │ 7     │
+```
 
+Let's fit this to a model
+
+``
+Y = x_1 + x_2 X
+``
+
+for some scalar coefficients ``x_1`` and ``x_2``. The least-squares answer is ``x_2 = 2.5``
+and ``x_1 = -2/3``,
+but with lasso regularization you penalize the magnitude of `x2`. Consequently,
+
+```jldoctest demo1
 julia> m = fit(LassoModel, @formula(Y ~ X), data)
-LassoModel using MinAICc(2) segment of the regulatization path.
+LassoModel using MinAICc(2) segment of the regularization path.
 
 Coefficients:
 ────────────
@@ -63,11 +76,18 @@ julia> predict(m, data[2:end,:])
  4.555426443044614
 ```
 
-To get an entire Lasso regularization path with default parameters:
+In the variant above, it automatically picks the size of penalty to apply to ``x_2``.
+
+To get an entire Lasso regularization path (thus examining the consequences of a range
+of penalties) with default parameters:
 
 ```julia
 fit(LassoPath, X, y, dist, link)
 ```
+
+where `X` is now the [design matrix](https://en.wikipedia.org/wiki/Design_matrix),
+omitting the column of 1s allowing for the intercept, and `y` is the vector of
+values to be fit.
 
 `dist` is any distribution supported by GLM.jl and `link` defaults to
 the canonical link for that distribution.
