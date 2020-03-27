@@ -2,7 +2,7 @@
 abstract type SegSelect end
 
 "Index of the selected RegularizationPath segment"
-segselect(path::RegularizationPath, select::S) where S<:SegSelect =
+segselect(path::RegularizationPath, select::S; kwargs...) where S<:SegSelect =
     throw("segselect(path, ::$S) is not implemented")
 
 "A RegularizationPath segment selector that returns all segments"
@@ -12,19 +12,19 @@ struct AllSeg <: SegSelect end
 struct MinAIC <: SegSelect end
 
 "Index of the selected RegularizationPath segment"
-segselect(path::RegularizationPath, select::MinAIC) = minAIC(path)
+segselect(path::RegularizationPath, select::MinAIC; kwargs...) = minAIC(path)
 
 "Selects the RegularizationPath segment with the minimum corrected AIC"
 struct MinAICc <: SegSelect
     k::Int # k parameter used to correct AIC criterion
     MinAICc(k::Int=2) = new(k)
 end
-segselect(path::RegularizationPath, select::MinAICc) = minAICc(path; k=select.k)
+segselect(path::RegularizationPath, select::MinAICc; kwargs...) = minAICc(path; k=select.k)
 
 "Selects the RegularizationPath segment with the minimum BIC"
 struct MinBIC <: SegSelect end
 
-segselect(path::RegularizationPath, select::MinBIC) = minBIC(path)
+segselect(path::RegularizationPath, select::MinBIC; kwargs...) = minBIC(path)
 
 "RegularizationPath segment selector supertype"
 abstract type CVSegSelect <: SegSelect end
@@ -76,14 +76,14 @@ coef(path, MinBIC())     # BIC minimizing segment
 coef(path, AllSeg())     # Array with entire path's coefficents
 ```
 """
-function StatsBase.coef(path::RegularizationPath, select::S) where S <: SegSelect
+function StatsBase.coef(path::RegularizationPath, select::S; kwargs...) where S <: SegSelect
     if !isdefined(path,:coefs)
         X = path.m.pp.X
         p,nλ = size(path)
         return zeros(eltype(X),p)
     end
 
-    seg = segselect(path, select)
+    seg = segselect(path, select; kwargs...)
 
     if hasintercept(path)
         vec(vcat(path.b0[seg],path.coefs[:,seg]))
@@ -92,7 +92,7 @@ function StatsBase.coef(path::RegularizationPath, select::S) where S <: SegSelec
     end
 end
 
-function StatsBase.coef(path::RegularizationPath, select::AllSeg)
+function StatsBase.coef(path::RegularizationPath, select::AllSeg; kwargs...)
     if !isdefined(path,:coefs)
         X = path.m.pp.X
         p,nλ = size(path)
@@ -106,8 +106,8 @@ function StatsBase.coef(path::RegularizationPath, select::AllSeg)
     end
 end
 
-segselect(path::RegularizationPath, select::S) where S<:CVSegSelect =
-    cross_validate_path(path, select)
+segselect(path::RegularizationPath, select::S; kwargs...) where S<:CVSegSelect =
+    cross_validate_path(path, select; kwargs...)
 
 segselect(path::RegularizationPath,
            X::AbstractMatrix{T}, y::V,        # potentially new data
@@ -168,7 +168,7 @@ selectmodel(path, MinBIC())            # BIC minimizing model
 selectmodel(path, MinCVmse(path, 5))   # 5-fold CV mse minimizing model
 ```
 """
-function selectmodel(path::R, select::SegSelect) where R<:RegularizationPath
+function selectmodel(path::R, select::SegSelect; kwargs...) where R<:RegularizationPath
     # extract reusable path parts
     m = path.m
     rr = deepcopy(m.rr)
@@ -188,7 +188,7 @@ function selectmodel(path::R, select::SegSelect) where R<:RegularizationPath
     end
 
     # select coefs
-    beta0 = Vector{Float64}(coef(path, select))
+    beta0 = Vector{Float64}(coef(path, select; kwargs...))
 
     # create new linear predictor
     pivot = true
@@ -287,7 +287,7 @@ function StatsBase.fit(::Type{R}, X::AbstractMatrix{T}, y::V,
     M = pathtype(R)
     path = fit(M, X, y, d, l; intercept=intercept, kwargs...)
 
-    R(selectmodel(path, select), intercept, select)
+    R(selectmodel(path, select; kwargs...), intercept, select)
 end
 
 newglm(m::LinearModel, rr, pp) = LinearModel(rr, pp)
