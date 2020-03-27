@@ -256,16 +256,16 @@ fit(LassoModel, X, y, Binomial(), Logit();
     the inner loop.
 - `irls_tol=1e-7`: The tolerance for outer iteratively reweighted least squares
     iterations. This is ignored unless the model is a generalized linear model.
-- `criterion=:coef` Convergence criterion. Controls how ``cd_tol`` and ``irls_tol``
+- `criterion=:coef` Convergence criterion. Controls how `cd_tol` and `irls_tol`
     are to be interpreted. Possible values are:
-    - ``:coef``: The model is considered to have converged if the
-    the maximum absolute squared difference in coefficients
-    between successive iterations drops below the specified
-    tolerance. This is the criterion used by glmnet.
-    - ``:obj``: The model is considered to have converged if the
-    the relative change in the Lasso/Elastic Net objective
-    between successive iterations drops below the specified
-    tolerance. This is the criterion used by GLM.jl.
+    - `:coef`: The model is considered to have converged if the
+      the maximum absolute squared difference in coefficients
+      between successive iterations drops below the specified
+      tolerance. This is the criterion used by glmnet.
+    - `:obj`: The model is considered to have converged if the
+      the relative change in the Lasso/Elastic Net objective
+      between successive iterations drops below the specified
+      tolerance. This is the criterion used by GLM.jl.
 - `minStepFac=0.001`: The minimum step fraction for backtracking line search.
 - `penalty_factor=ones(size(X, 2))`: Separate penalty factor ``\\omega_j``
     for each coefficient ``j``, i.e. instead of ``\\lambda`` penalties become
@@ -275,7 +275,7 @@ fit(LassoModel, X, y, Binomial(), Logit();
 - `standardizeω=true`: Whether to scale penalty factors to sum to the number of
     variables (glmnet.R convention).
 
-See also [`fit(::RegularizationPath...)`](@ref) for a full list of arguments
+See also [`fit(::Type{LassoPath}, ::Matrix{Float64}, ::Vector{Float64})`](@ref) for a more complete list of arguments
 """
 function StatsBase.fit(::Type{R}, X::AbstractMatrix{T}, y::V,
     d::UnivariateDistribution=Normal(), l::Link=canonicallink(d);
@@ -326,7 +326,7 @@ end
     
 function Base.show(io::IO, obj::RegularizedModel)
     # prefix = isa(obj.m, GeneralizedLinearModel) ? string(typeof(distfun(path)).name.name, " ") : ""
-    println(io, "$(typeof(obj).name.name) using $(obj.select) segment of the regulatization path.")
+    println(io, "$(typeof(obj).name.name) using $(obj.select) segment of the regularization path.")
 
     println(io, "\nCoefficients:\n", coeftable(obj))
 end
