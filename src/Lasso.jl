@@ -402,6 +402,9 @@ fit(LassoPath, X, y, Binomial(), Logit();
     value yielding a null model.
     If `λ` is unspecified, Lasso.jl selects `nλ` logarithmically spaced `λ` values from
     `λmax` to `λminratio * λmax`.
+- `α=1`: Value between 0 and 1 controlling the balance between ridge (``\alpha = 0``)
+    and lasso (``\alpha = 1``) regression.
+    α cannot be set to 0, though it may be set to 1.
 - `nλ=100` number of λ values to use
 - `λminratio=1e-4` if more observations than predictors otherwise 0.001.
 - `stopearly=true`: When `true`, if the proportion of deviance explained
@@ -472,6 +475,7 @@ function StatsBase.fit(::Type{LassoPath},
 
     # Lasso initialization
     α = convert(T, α)
+    0 < α <= 1 || error("α must satisfy 0 < α <= 1")
     λminratio = convert(T, λminratio)
     coefitr = randomize ? RandomCoefficientIterator() : (1:0)
 
@@ -618,7 +622,7 @@ end
 
 "predicted values for data used to estimate `path`"
 function StatsBase.predict(path::RegularizationPath; select=AllSeg())
-    X = path.m.pp.X 
+    X = path.m.pp.X
     offset = path.m.rr.offset
 
     # destandardize X if needed
