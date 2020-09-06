@@ -685,7 +685,7 @@ function StatsBase.fit!(path::RegularizationPath{S,T}; verbose::Bool=false, irls
     niter = 0
     if nλ == 0
         i = 0
-    else
+    elseif i <= nλ  # need this check because it is possible that autoλ is true and nλ is 1
         while true # outer loop
             obj = convert(T, Inf)
             last_dev_ratio = dev_ratio
@@ -776,6 +776,7 @@ function StatsBase.fit!(path::RegularizationPath{S,T}; verbose::Bool=false, irls
         end
     end
 
+    i = min(i, nλ)
     path.λ = path.λ[1:i]
     path.pct_dev = pct_dev[1:i]
     path.coefs = coefs[:, 1:i]
@@ -819,29 +820,32 @@ function StatsBase.fit!(path::RegularizationPath{S,T}; verbose::Bool=false,
         i = 1
     end
 
-    while true # outer loop
-        last_dev_ratio = dev_ratio
-        curλ = λ[i]
+    if i <= nλ  # need this check because it is possible that autoλ is true and nλ is 1
+        while true # outer loop
+            last_dev_ratio = dev_ratio
+            curλ = λ[i]
 
-        # Run coordinate descent
-        niter += cdfit!(newcoef, cd, curλ, criterion)
+            # Run coordinate descent
+            niter += cdfit!(newcoef, cd, curλ, criterion)
 
-        dev_ratio = cd.dev/nulldev
-        pct_dev[i] = 1 - dev_ratio
-        addcoefs!(coefs, newcoef, i)
-        b0s[i] = intercept(newcoef, cd)
+            dev_ratio = cd.dev/nulldev
+            pct_dev[i] = 1 - dev_ratio
+            addcoefs!(coefs, newcoef, i)
+            b0s[i] = intercept(newcoef, cd)
 
-        # Test whether we should continue
-        if i == nλ || (stopearly && autoλ && (last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
-                       pct_dev[i] > MAX_DEV_FRAC))
-            break
+            # Test whether we should continue
+            if i == nλ || (stopearly && autoλ && (last_dev_ratio - dev_ratio < MIN_DEV_FRAC_DIFF ||
+                           pct_dev[i] > MAX_DEV_FRAC))
+                break
+            end
+
+            verbose && println("$i: λ=$curλ, pct_dev=$(pct_dev[i])")
+            poststep(path, cd, i, newcoef)
+            i += 1
         end
-
-        verbose && println("$i: λ=$curλ, pct_dev=$(pct_dev[i])")
-        poststep(path, cd, i, newcoef)
-        i += 1
     end
 
+    i = min(i, nλ)
     path.λ = path.λ[1:i]
     path.pct_dev = pct_dev[1:i]
     path.coefs = coefs[:, 1:i]
