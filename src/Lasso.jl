@@ -209,6 +209,10 @@ const MAX_DEV_FRAC = 0.999
 # Compute automatic λ values based on λmax and λminratio
 function computeλ(λmax, λminratio, α, nλ)
     λmax /= α
+    if λmax == 0
+        @info "The penalized coefficients equal zero for all values of the regularisation parameter λ."
+        return [λmax]
+    end
     logλmax = log(λmax)
     exp.(range(logλmax, stop=logλmax + log(λminratio), length=nλ))
 end
