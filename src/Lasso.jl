@@ -210,7 +210,7 @@ const MAX_DEV_FRAC = 0.999
 function computeλ(λmax, λminratio, α, nλ)
     λmax /= α
     if λmax == 0
-        @info "The penalized coefficients equal zero for all values of the regularisation parameter λ."
+        @info "The penalized coefficients equal zero for all values of the regularization parameter λ."
         return [λmax]
     end
     logλmax = log(λmax)
