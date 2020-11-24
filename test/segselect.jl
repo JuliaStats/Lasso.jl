@@ -30,13 +30,13 @@ datapath = joinpath(dirname(@__FILE__), "data")
             path = fit(R, f, data, dist, link; intercept=intercept, offset=offset)
 
             @testset "$(typeof(select))" for select in [MinAIC(), MinAICc(), MinBIC(), MinCVmse(path), MinCV1se(path)]
-                Random.seed!(421)
+                Random.seed!(rng, 421)
                 m = fit(L, f, data, dist, link; select=select, intercept=intercept, offset=offset)
 
-                Random.seed!(421)
+                Random.seed!(rng, 421)
                 pathcoefs = coef(path, select)
 
-                Random.seed!(421)
+                Random.seed!(rng, 421)
                 pathpredict = Lasso.predict(path, data; select=select, offset=offset)
                 @test pathpredict ≈ Lasso.predict(path; select=select)
 

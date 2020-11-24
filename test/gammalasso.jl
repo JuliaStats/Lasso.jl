@@ -20,7 +20,7 @@ datapath = joinpath(dirname(@__FILE__), "data")
 penaltyfactors = readcsvmat(joinpath(datapath,"penaltyfactors.csv"))
 
 rtol=1e-2
-Random.seed!(243214)
+Random.seed!(rng, 243214)
 @testset "GammaLassoPath" begin
     @testset "$family" for (family, dist, link) in (("gaussian", Normal(), IdentityLink()), ("binomial", Binomial(), LogitLink()), ("poisson", Poisson(), LogLink()))
         data = readcsvmat(joinpath(datapath,"gamlr.$family.data.csv"))

@@ -1,7 +1,9 @@
-using Test, Lasso
+using Test, Lasso, StableRNGs
 
-using CSV
-readcsvmat(path;header=false, kwargs...) = convert(Matrix{Float64},CSV.read(path;header=header, kwargs...))
+const rng = StableRNG(13)
+
+using CSV, DataFrames
+readcsvmat(path;header=false, kwargs...) = convert(Matrix{Float64}, DataFrame(CSV.File(path;header=header, kwargs...)))
 
 @testset "Lasso" begin
 
