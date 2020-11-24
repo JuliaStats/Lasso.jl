@@ -15,7 +15,7 @@ end
     @testset "order = $(order)" for order in (1, 2, 3)
         D1 = diffmatslow(order, 100)
         D2 = Lasso.TrendFiltering.DifferenceMatrix{Float64}(order, 100)
-        x = randn(rng, 100)
+        x = randn(testrng, 100)
         @test D2'D2 == D1'D1
         @test D2*x ≈ D1*x
         @test D2'*x[1:size(D1, 1)] ≈ D1'*x[1:size(D1, 1)]

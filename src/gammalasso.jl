@@ -65,6 +65,7 @@ function StatsBase.fit(::Type{GammaLassoPath},
                        algorithm::Type=defaultalgorithm(d, l, size(X, 1), size(X, 2)),
                        dofit::Bool=true,
                        irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
+                       rng::Union{AbstractRNG, Nothing}=nothing,
                        maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
                        penalty_factor::Union{Vector,Nothing}=nothing,
                        standardizeω::Bool=true,
@@ -92,7 +93,7 @@ function StatsBase.fit(::Type{GammaLassoPath},
     # Lasso initialization
     α = convert(T, α)
     λminratio = convert(T, λminratio)
-    coefitr = randomize ? RandomCoefficientIterator() : (1:0)
+    coefitr = randomize ? RandomCoefficientIterator(rng) : (1:0)
     cd = algorithm{T,intercept,typeof(X),typeof(coefitr),typeof(ω)}(X, α, maxncoef, 1e-7, coefitr, ω)
 
     # GLM response initialization

@@ -9,15 +9,15 @@ testpath(T::DataType, d::Normal, l::GLM.Link, nsamples::Int, nfeatures::Int) =
 function makeX(ρ, nsamples, nfeatures, sparse)
     Σ = fill(ρ, nfeatures, nfeatures)
     Σ[diagind(Σ)] .= 1
-    X = permutedims(rand(rng, MvNormal(Σ), nsamples))
-    sparse && (X[randperm(rng, length(X))[1:round(Int, length(X)*0.95)]] .= 0)
+    X = permutedims(rand(testrng, MvNormal(Σ), nsamples))
+    sparse && (X[randperm(testrng, length(X))[1:round(Int, length(X)*0.95)]] .= 0)
     β = [(-1)^j*exp(-2*(j-1)/20) for j = 1:nfeatures]
     (X, β)
 end
 
-randdist(::Normal, x) = rand(rng, Normal(x))
-randdist(::Binomial, x) = rand(rng, Bernoulli(x))
-randdist(::Poisson, x) = rand(rng, Poisson(x))
+randdist(::Normal, x) = rand(testrng, Normal(x))
+randdist(::Binomial, x) = rand(testrng, Bernoulli(x))
+randdist(::Poisson, x) = rand(testrng, Poisson(x))
 function genrand(T::DataType, d::Distribution, l::GLM.Link, nsamples::Int, nfeatures::Int, sparse::Bool)
     X, coef = makeX(0.0, nsamples, nfeatures, sparse)
     y = X*coef
@@ -32,9 +32,9 @@ function gen_penalty_factors(X,nonone_penalty_factors;frac1=0.7,frac0=0.05)
         penalty_factor = ones(size(X,2))
         nzeros = Int(floor(size(X,2)*frac0))
         nonone = Int(floor(size(X,2)*(1-frac1)))
-        Random.seed!(rng, 7337)
+        Random.seed!(testrng, 7337)
         penalty_factor[1:nzeros] = zeros(nzeros)
-        penalty_factor[end-nonone+1:end] = rand(rng, Float64,nonone)
+        penalty_factor[end-nonone+1:end] = rand(testrng, Float64,nonone)
         penalty_factor_glmnet = penalty_factor
     else
         penalty_factor = nothing
@@ -47,9 +47,9 @@ end
 @testset "LassoPath" begin
     @testset "$(typeof(dist).name.name) $(typeof(link).name.name)" for (dist, link) in ((Normal(), IdentityLink()), (Binomial(), LogitLink()), (Poisson(), LogLink()))
         @testset "sparse = $sp" for sp in (false, true)
-            Random.seed!(rng, 1337)
+            Random.seed!(testrng, 465)
             (X, y) = genrand(Float64, dist, link, 1000, 10, sp)
-            yoff = randn(rng, length(y))
+            yoff = randn(testrng, length(y))
             @testset "$(intercept ? "w/" : "w/o") intercept" for intercept = (false, true)
                 @testset "unfitted LassoPath (dofit=false)" begin
                     @testset "$(spfit ? "as SparseMatrixCSC" : "as Matrix")" for spfit in (true,false)
@@ -160,10 +160,10 @@ end
 #     for (dist, link) in ((Normal(), IdentityLink()), (Binomial(), LogitLink()), (Poisson(), LogLink()))[2:2]
 #         @testset "$(typeof(dist).name.name) $(typeof(link).name.name)" begin
 #             for sp in (false, true)[2:2]
-#                 Random.seed!(rng, 1337)
+#                 Random.seed!(testrng, 1337)
 #                 @testset sp ? "sparse" : "dense" begin
 #                     (X, y) = genrand(Float64, dist, link, 1000, 10, sp)
-#                     yoff = randn(rng, length(y))
+#                     yoff = randn(testrng, length(y))
 #                     for intercept = (false, true)[2:2]
 #                         @testset "$(intercept ? "w/" : "w/o") intercept" begin
 #                             @testset "unfitted LassoPath (dofit=false)" begin

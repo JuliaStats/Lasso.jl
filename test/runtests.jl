@@ -1,6 +1,6 @@
 using Test, Lasso, StableRNGs
 
-const rng = StableRNG(13)
+const testrng = StableRNG(13)
 
 using CSV, DataFrames
 readcsvmat(path;header=false, kwargs...) = convert(Matrix{Float64}, DataFrame(CSV.File(path;header=header, kwargs...)))
