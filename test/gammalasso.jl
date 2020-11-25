@@ -46,6 +46,7 @@ Random.seed!(testrng, 6540)
                 # fit julia version
                 glp = fit(GammaLassoPath, X, y, dist, link; γ=γ, stopearly=false,
                     λminratio=0.001, penalty_factor=penalty_factor, λ=λ,
+                    rng=StableRNG(1337),
                     standardize=false, standardizeω=false)
 
                 # compare
@@ -82,6 +83,7 @@ Random.seed!(testrng, 6540)
                     # Compare with LassoPath
                     lp = fit(LassoPath, X, y, dist, link; stopearly=false,
                         λminratio=0.001, penalty_factor=penalty_factor, λ=λ,
+                        rng=StableRNG(1337),
                         standardize=false, standardizeω=false)
                     @test glp.λ == lp.λ
                     @test glp.b0 ≈ lp.b0

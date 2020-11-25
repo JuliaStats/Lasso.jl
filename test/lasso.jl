@@ -110,6 +110,7 @@ end
                                             l = fit(LassoPath, spfit ? sparse(X) : X, y, dist, link,
                                                     λ=g.lambda, algorithm=algorithm, intercept=intercept,
                                                     cd_tol=cd_tol, irls_tol=irls_tol, criterion=criterion, randomize=randomize,
+                                                    rng=StableRNG(1337),
                                                     α=alpha, offset=offset, penalty_factor=penalty_factor)
                                             rd = (l.coefs - gbeta)./gbeta
                                             rd[.!isfinite.(rd)] .= 0
@@ -134,12 +135,13 @@ end
                                             #     end
                                             # end
                                             # With a function to generate λ
-                                            λfunc(λmax) = range(λmax, stop=g.lambda[end], length=3)
+                                            λfunc(λmax) = range(λmax, stop=g.lambda[end], length=10)
                                             lf = fit(LassoPath, spfit ? sparse(X) : X, y, dist, link,
                                                      λ=λfunc, algorithm=algorithm, intercept=intercept,
                                                      cd_tol=cd_tol, irls_tol=irls_tol, criterion=criterion, randomize=randomize,
+                                                     rng=StableRNG(1337),
                                                      α=alpha, offset=offset, penalty_factor=penalty_factor)
-                                            @test length(lf.λ) == 3
+                                            @test length(lf.λ) == 10
                                             @test_skip all(iszero, lf.coefs[:,1])
                                             @test lf.coefs[:,end] ≈ l.coefs[:,end]
                                         end
