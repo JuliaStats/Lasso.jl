@@ -10,8 +10,8 @@
 [docs-stable-img]: https://img.shields.io/badge/docs-stable-blue.svg
 [docs-stable-url]: https://juliastats.github.io/Lasso.jl/stable
 
-[travis-img]: https://travis-ci.org/JuliaStats/Lasso.jl.svg?branch=master
-[travis-url]: https://travis-ci.org/JuliaStats/Lasso.jl
+[travis-img]: https://travis-ci.com/JuliaStats/Lasso.jl.svg?branch=master
+[travis-url]: https://travis-ci.com/JuliaStats/Lasso.jl
 
 [codecov-img]: https://coveralls.io/repos/JuliaStats/Lasso.jl/badge.svg?branch=master
 [codecov-url]: https://coveralls.io/r/JuliaStats/Lasso.jl?branch=master
