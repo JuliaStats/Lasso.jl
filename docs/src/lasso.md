@@ -75,12 +75,12 @@ julia> Random.seed!(124); # because CV folds are random
 
 julia> data = DataFrame(X=[1,2,3], Y=[2,4,7])
 3×2 DataFrames.DataFrame
-│ Row │ X     │ Y     │
-│     │ Int64 │ Int64 │
-├─────┼───────┼───────┤
-│ 1   │ 1     │ 2     │
-│ 2   │ 2     │ 4     │
-│ 3   │ 3     │ 7     │
+ Row │ X      Y
+     │ Int64  Int64
+─────┼──────────────
+   1 │     1      2
+   2 │     2      4
+   3 │     3      7
 
 julia> m = fit(LassoModel, @formula(Y ~ X), data; select=MinCVmse(Kfold(3,2)))
 LassoModel using MinCVmse(Kfold([3, 1, 2], 2, 1.5)) segment of the regularization path.
@@ -95,7 +95,7 @@ x2   0.0
 
 julia> coef(m)
 2-element Array{Float64,1}:
- 4.333333333333335
+ 4.333333333333333
  0.0              
 
 ```
