@@ -1,5 +1,6 @@
 using Lasso
-using GLM, Distributions, GLMNet, Random, LinearAlgebra, SparseArrays
+using GLM, Distributions, Random, LinearAlgebra, SparseArrays
+using GLMNet: glmnet
 
 datapath = joinpath(dirname(@__FILE__), "data")
 
