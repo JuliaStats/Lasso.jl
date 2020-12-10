@@ -124,14 +124,14 @@ end
 
 ## COEFFICIENT ITERATION IN SEQUENTIAL OR RANDOM ORDER
 struct RandomCoefficientIterator
-    rng::MersenneTwister
+    rng::AbstractRNG
     rg::Sampler
     coeforder::Vector{Int}
 end
 const RANDOMIZE_DEFAULT = true
 
-function RandomCoefficientIterator()
-    rng = MersenneTwister(1337)
+RandomCoefficientIterator(::Nothing) = RandomCoefficientIterator(MersenneTwister(1337))
+function RandomCoefficientIterator(rng)    
     RandomCoefficientIterator(rng, Sampler(rng, 1:2), Int[])
 end
 
@@ -425,6 +425,7 @@ fit(LassoPath, X, y, Binomial(), Logit();
 - `randomize=true`: Whether to randomize the order in which coefficients are
     updated by coordinate descent. This can drastically speed
     convergence if coefficients are highly correlated.
+- `rng=RNG_DEFAULT`: Random number generator to be used for coefficient iteration.
 - `maxncoef=min(size(X, 2), 2*size(X, 1))`: maximum number of coefficients
     allowed in the model. If exceeded, an error will be thrown.
 - `dofit=true`: Whether to fit the model upon construction. If `false`, the
@@ -463,6 +464,7 @@ function StatsBase.fit(::Type{LassoPath},
                        algorithm::Type=defaultalgorithm(d, l, size(X, 1), size(X, 2)),
                        dofit::Bool=true,
                        irls_tol::Real=1e-7, randomize::Bool=RANDOMIZE_DEFAULT,
+                       rng::Union{AbstractRNG, Nothing}=nothing,
                        maxncoef::Int=min(size(X, 2), 2*size(X, 1)),
                        penalty_factor::Union{Vector,Nothing}=nothing,
                        standardizeω::Bool=true,
@@ -477,7 +479,7 @@ function StatsBase.fit(::Type{LassoPath},
     α = convert(T, α)
     0 < α <= 1 || error("α must satisfy 0 < α <= 1")
     λminratio = convert(T, λminratio)
-    coefitr = randomize ? RandomCoefficientIterator() : (1:0)
+    coefitr = randomize ? RandomCoefficientIterator(rng) : (1:0)
 
     # penalty_factor (ω) defaults to a vector of ones
     ω = initpenaltyfactor(penalty_factor, size(X, 2), standardizeω)

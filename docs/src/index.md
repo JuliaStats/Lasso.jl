@@ -34,12 +34,12 @@ julia> using DataFrames, Lasso
 
 julia> data = DataFrame(X=[1,2,3], Y=[2,4,7])
 3×2 DataFrames.DataFrame
-│ Row │ X     │ Y     │
-│     │ Int64 │ Int64 │
-├─────┼───────┼───────┤
-│ 1   │ 1     │ 2     │
-│ 2   │ 2     │ 4     │
-│ 3   │ 3     │ 7     │
+ Row │ X      Y
+     │ Int64  Int64
+─────┼──────────────
+   1 │     1      2
+   2 │     2      4
+   3 │     3      7
 ```
 
 Let's fit this to a model

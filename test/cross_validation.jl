@@ -14,7 +14,7 @@ path = fit(LassoPath, X, y; offset=offset)
 
 coefsAICc = coef(path, MinAICc())
 segminAICc = minAICc(path)
-@test segminAICc == 71
+@test segminAICc == 72
 @test coefsAICc == β[:,segminAICc]
 
 coefsBIC = coef(path, MinBIC())
@@ -24,26 +24,26 @@ segminBIC = Lasso.minBIC(path)
 
 coefsAIC = coef(path, MinAIC())
 segminAIC = Lasso.minAIC(path)
-@test segminAIC == 71
+@test segminAIC == 72
 @test coefsAIC == β[:,segminAIC]
 
 Random.seed!(13)
 gen = Kfold(length(y),10)
-segCVmin = cross_validate_path(path,MinCVmse(gen))
+segCVmin = cross_validate_path(path, MinCVmse(gen))
 coefsCVmin = coef(path, MinCVmse(path))
-@test segCVmin == 71
+@test segCVmin == 72
 @test coefsCVmin == β[:,segCVmin]
 
 Random.seed!(13)
 gen = Kfold(length(y),10)
 segCVmin = cross_validate_path(path,X,y, MinCVmse(gen), offset=offset)
 coefsCVmin = coef(path, MinCVmse(path))
-@test segCVmin == 71
+@test segCVmin == 72
 @test coefsCVmin == β[:,segCVmin]
 
 Random.seed!(13)
 coefsCV1se = coef(path, MinCV1se(path, 20))
-Random.seed!(13)
+Random.seed!( 13)
 segCV1se = cross_validate_path(path,X,y, MinCV1se(path, 20),offset=offset)
 @test segCV1se == 42
 @test coefsCV1se == β[:,segCV1se]

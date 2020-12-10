@@ -20,7 +20,7 @@ datapath = joinpath(dirname(@__FILE__), "data")
 # NOTE: 1. we use intercept=false because of a StatsModels issue where predict with drop_intercept model didn't work
 # NOTE: 2. we skip the poisson because it does not converge without an intercept
 @testset "$family" for (family, dist, link) in (("gaussian", Normal(), IdentityLink()), ("binomial", Binomial(), LogitLink()))
-    data = CSV.read(joinpath(datapath,"gamlr.$family.data.csv"); header=[:y, :x1, :x2, :x3])
+    data = CSV.File(joinpath(datapath,"gamlr.$family.data.csv"); header=[:y, :x1, :x2, :x3]) |> DataFrame
     offset = fill(0.001,length(data.y))
 
     @testset "$L" for L in [LassoModel, GammaLassoModel]
