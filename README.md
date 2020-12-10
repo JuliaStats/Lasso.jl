@@ -2,7 +2,7 @@
 
 | **Documentation**                                                               | **Build Status**                                                                                |
 |:-------------------------------------------------------------------------------:|:-----------------------------------------------------------------------------------------------:|
-| [![][docs-stable-img]][docs-stable-url] [![][docs-dev-img]][docs-dev-url] | [![][travis-img]][travis-url] [![][codecov-img]][codecov-url] |
+| [![][docs-stable-img]][docs-stable-url] [![][docs-dev-img]][docs-dev-url] | [![][actions-img]][actions-url] [![][codecov-img]][codecov-url] |
 
 [docs-dev-img]: https://img.shields.io/badge/docs-dev-blue.svg
 [docs-dev-url]: https://juliastats.github.io/Lasso.jl/latest
@@ -10,11 +10,11 @@
 [docs-stable-img]: https://img.shields.io/badge/docs-stable-blue.svg
 [docs-stable-url]: https://juliastats.github.io/Lasso.jl/stable
 
-[travis-img]: https://travis-ci.com/JuliaStats/Lasso.jl.svg?branch=master
-[travis-url]: https://travis-ci.com/JuliaStats/Lasso.jl
+[actions-img]: https://github.com/JuliaStats/Lasso.jl/workflows/CI/badge.svg
+[actions-url]: https://github.com/JuliaStats/Lasso.jl/actions?query=workflow%3ACI+branch%3Amaster
 
-[codecov-img]: https://coveralls.io/repos/JuliaStats/Lasso.jl/badge.svg?branch=master
-[codecov-url]: https://coveralls.io/r/JuliaStats/Lasso.jl?branch=master
+[codecov-img]: http://codecov.io/github/JuliaStats/Lasso.jl/coverage.svg?branch=master
+[codecov-url]: http://codecov.io/github/JuliaStats/Lasso.jl?branch=master
 
 Lasso.jl is a pure Julia implementation of the glmnet coordinate
 descent algorithm for fitting linear and generalized linear Lasso and
