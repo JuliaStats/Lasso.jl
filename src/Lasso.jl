@@ -208,6 +208,7 @@ const MAX_DEV_FRAC = 0.999
 
 # Compute automatic λ values based on λmax and λminratio
 function computeλ(λmax, λminratio, α, nλ)
+    !iszero(α) || error("α must be nonzero for λ to be computed automatically.")
     λmax /= α
     logλmax = log(λmax)
     exp.(range(logλmax, stop=logλmax + log(λminratio), length=nλ))
@@ -404,8 +405,8 @@ fit(LassoPath, X, y, Binomial(), Logit();
     `λmax` to `λminratio * λmax`.
 - `α=1`: Value between 0 and 1 controlling the balance between ridge (``\alpha = 0``)
     and lasso (``\alpha = 1``) regression.
-    α cannot be set to 0, though it may be set to 1.
-- `nλ=100` number of λ values to use
+    `α` cannot be set to 0 if `λ` was not specified , though it may be set to 1.
+- `nλ=100` number of `λ` values to use
 - `λminratio=1e-4` if more observations than predictors otherwise 0.001.
 - `stopearly=true`: When `true`, if the proportion of deviance explained
     exceeds 0.999 or the difference between the deviance explained by successive λ
@@ -477,7 +478,7 @@ function StatsBase.fit(::Type{LassoPath},
 
     # Lasso initialization
     α = convert(T, α)
-    0 < α <= 1 || error("α must satisfy 0 < α <= 1")
+    0 <= α <= 1 || error("α must satisfy 0 <= α <= 1")
     λminratio = convert(T, λminratio)
     coefitr = randomize ? RandomCoefficientIterator(rng) : (1:0)
 
