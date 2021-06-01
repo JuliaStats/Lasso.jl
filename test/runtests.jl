@@ -3,7 +3,7 @@ using Test, Lasso, StableRNGs
 const testrng = StableRNG(13)
 
 using CSV, DataFrames
-readcsvmat(path;header=false, kwargs...) = convert(Matrix{Float64}, DataFrame(CSV.File(path;header=header, kwargs...)))
+readcsvmat(path;header=false, kwargs...) = Matrix{Float64}(DataFrame(CSV.File(path;header=header, kwargs...)))
 
 @testset "Lasso" begin
 
