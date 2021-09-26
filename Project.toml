@@ -1,6 +1,6 @@
 name = "Lasso"
 uuid = "b4fcebef-c861-5a0f-a7e2-ba9dc32b180a"
-version = "0.6.2"
+version = "0.6.3"
 
 [deps]
 DSP = "717857b8-e6f2-59f4-9121-6e50c889abd2"
@@ -18,8 +18,8 @@ StatsModels = "3eaba693-59b7-5ba5-a881-562e759f1c8d"
 DSP = "0.7"
 Distributions = "0.25"
 GLM = "1.5"
-MLBase = "0.8"
+MLBase = "0.9"
 Reexport = "1"
 StatsBase = "0.33"
 StatsModels = "0.6"
-julia = "0.7, 1"
+julia = "1"
