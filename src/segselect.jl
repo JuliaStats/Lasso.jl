@@ -141,6 +141,7 @@ Predicted values using a selected segment of a regularization path.
 ```julia
 m = fit(LassoModel, X, y; select=MinBIC())
 predict(m, newX)     # predict using BIC minimizing segment
+```
 """
 function StatsBase.predict(m::RegularizedModel, newX::AbstractMatrix{T}; kwargs...) where T
     # add an interecept to newX if the model has one
