@@ -592,6 +592,7 @@ Predicted values for a selected segment of a regularization path.
 # Examples
 ```julia
 predict(path, newX; select=MinBIC())     # predict using BIC minimizing segment
+```
 """
 function StatsBase.predict(path::RegularizationPath, newX::AbstractMatrix{T}; offset::FPVector=T[], select=AllSeg()) where {T<:AbstractFloat}
     # add an interecept to newX if the model has one
