@@ -431,8 +431,12 @@ fit(LassoPath, X, y, Binomial(), Logit();
     allowed in the model. If exceeded, an error will be thrown.
 - `dofit=true`: Whether to fit the model upon construction. If `false`, the
     model can be fit later by calling `fit!(model)`.
+- `cd_maxiter=100_000`: The maximum number of coordinate descent iterations.
 - `cd_tol=1e-7`: The tolerance for coordinate descent iterations iterations in
     the inner loop.
+- `irls_maxiter=30`: Maximum number of iterations in the iteratively reweighted
+   least squares loop. This is ignored unless the model is a generalized linear
+   model.
 - `irls_tol=1e-7`: The tolerance for outer iteratively reweighted least squares
     iterations. This is ignored unless the model is a generalized linear model.
 - `criterion=:coef` Convergence criterion. Controls how `cd_tol` and `irls_tol`
