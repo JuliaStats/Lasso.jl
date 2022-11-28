@@ -330,8 +330,13 @@ function build_model(X::AbstractMatrix{T}, y::FPVector, d::UnivariateDistributio
                      wts::Union{FPVector,Nothing}, offset::Vector, α::Real, nλ::Int,
                      ω::Union{Vector, Nothing}, intercept::Bool, irls_tol::Real, dofit::Bool) where T
     # Fit to find null deviance
+    X0 = nullX(X, intercept, ω)
+
+    # Drop collinear X columns only if it has any (cholpred gives very large rank otherwise)
+    dropcollinear = size(X0,2) > 0
+
     # Maybe we should reuse this GlmResp object?
-    nullmodel = fit(GeneralizedLinearModel, nullX(X, intercept, ω), y, d, l;
+    nullmodel = fit(GeneralizedLinearModel, X0, y, d, l; dropcollinear=dropcollinear,
                     wts=wts, offset=offset, rtol=irls_tol, dofit=dofit)
     nulldev = deviance(nullmodel)
     nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
