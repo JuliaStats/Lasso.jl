@@ -210,6 +210,10 @@ const MAX_DEV_FRAC = 0.999
 function computeλ(λmax, λminratio, α, nλ)
     !iszero(α) || error("α must be nonzero for λ to be computed automatically.")
     λmax /= α
+    if isapprox(λmax, 0; atol=1e-10)  # then assuming λmax = 0
+        @info "The penalized coefficients equal zero for all values of the regularization parameter λ."
+        return [0]
+    end
     logλmax = log(λmax)
     exp.(range(logλmax, stop=logλmax + log(λminratio), length=nλ))
 end

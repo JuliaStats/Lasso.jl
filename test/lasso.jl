@@ -157,6 +157,24 @@ end
     end
 end
 
+# Test case with zero variation in y is handled correctly
+function zero_variation_test()
+    X = [
+        0.5472502169628388 0.37660447632078875 0.06669114126498532 0.4950818154768257;
+        0.5142931961160688 0.520205941129849 0.4052730635141131 0.6700530909562794;
+        0.5831846867316071 0.3174143498124731 0.772131243876973 0.03386847158881201;
+        0.8802489459954292 0.6742158685234003 0.3849775799923969 0.7773264968613842;
+        0.9216786846192617 0.7888303438159934 0.09788865152005011 0.34950775139369905
+    ]
+    y = 0.2937233091452627 .+ zeros(size(X, 1))
+    path = fit(LassoPath, X, y)
+    (path.λ == eltype(path.λ)[0]) || return false
+    (length(path.coefs.nzval) == 0) || return false
+    return true
+end
+
+@test zero_variation_test() == true
+
 # Test for sparse matrices
 
 # @testset "LassoPath Zero in" begin
