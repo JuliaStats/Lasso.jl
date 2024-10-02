@@ -34,7 +34,7 @@ struct MinCVmse <: CVSegSelect
     gen::CrossValGenerator
 
     MinCVmse(gen::CrossValGenerator) = new(gen)
-    MinCVmse(path::RegularizationPath, k::Int=10) = new(Kfold(length(path.m.rr.y), k))
+    MinCVmse(path::RegularizationPath, k::Int=10; rng::AbstractRNG = Random.default_rng()) = new(Kfold(rng, length(path.m.rr.y), k))
 end
 
 CVfun(oosdevs, ::MinCVmse) = CVmin(oosdevs)
@@ -47,7 +47,7 @@ struct MinCV1se <: CVSegSelect
     gen::CrossValGenerator
 
     MinCV1se(gen::CrossValGenerator) = new(gen)
-    MinCV1se(path::RegularizationPath, k::Int=10) = new(Kfold(length(path.m.rr.y), k))
+    MinCV1se(path::RegularizationPath, k::Int=10; rng::AbstractRNG = Random.default_rng()) = new(Kfold(rng, length(path.m.rr.y), k))
 end
 
 CVfun(oosdevs, ::MinCV1se) = CV1se(oosdevs)
