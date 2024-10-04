@@ -29,7 +29,7 @@ datapath = joinpath(dirname(@__FILE__), "data")
         @testset "$f" for (f,intercept) in ((@formula(y~x1+x2+x3), true), (@formula(y~0+x1+x2+x3), false))
             path = fit(R, f, data, dist, link; intercept=intercept, offset=offset)
 
-            @testset "$(typeof(select))" for select in [MinAIC(), MinAICc(), MinBIC(), MinCVmse(path), MinCV1se(path)]
+            @testset "$(typeof(select))" for select in [MinAIC(), MinAICc(), MinBIC(), MinCVmse(path), MinCV1se(path), MinCVmse(path; rng = StableRNG(421)), MinCV1se(path; rng = StableRNG(421))]
                 Random.seed!(421)
                 m = fit(L, f, data, dist, link; select=select, intercept=intercept, offset=offset)
 
