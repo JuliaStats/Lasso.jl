@@ -1,6 +1,6 @@
 name = "Lasso"
 uuid = "b4fcebef-c861-5a0f-a7e2-ba9dc32b180a"
-version = "0.7.2"
+version = "0.7.3"
 
 [deps]
 DSP = "717857b8-e6f2-59f4-9121-6e50c889abd2"
