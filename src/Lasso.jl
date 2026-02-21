@@ -182,7 +182,7 @@ mutable struct LassoPath{S<:Union{LinearModel,GeneralizedLinearModel},T} <: Regu
         new{S,T}(m, nulldev, nullb0, λ, autoλ, Xnorm)
 end
 
-function Base.show(io::IO, path::RegularizationPath)
+function Base.show(io::IO, ::MIME"text/plain", path::RegularizationPath)
     prefix = isa(path.m, GeneralizedLinearModel) ? string(typeof(distfun(path)).name.name, " ") : ""
     pathsize = size(path)
     println(io, "$(prefix)$(typeof(path).name.name) ($(pathsize[2])) solutions for $(pathsize[1]) predictors in $(path.niter) iterations):")
@@ -194,7 +194,7 @@ function Base.show(io::IO, path::RegularizationPath)
             ncoefs[i] = coefs.colptr[i+1] - coefs.colptr[i]
         end
         ncoefs[end] = nnz(coefs) - coefs.colptr[size(coefs, 2)] + 1
-        show(io, CoefTable(Union{Vector{Int},Vector{Float64}}[path.λ, path.pct_dev, ncoefs], ["λ", "pct_dev", "ncoefs"], []))
+        show(io, MIME("text/plain"), CoefTable(Union{Vector{Int},Vector{Float64}}[path.λ, path.pct_dev, ncoefs], ["λ", "pct_dev", "ncoefs"], []))
     else
         print(io, "    (not fit)")
     end
