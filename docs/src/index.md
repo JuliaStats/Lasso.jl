@@ -33,7 +33,7 @@ Journal of Computational and Graphical Statistics, 26:3, 525-536.
 julia> using DataFrames, Lasso
 
 julia> data = DataFrame(X=[1,2,3], Y=[2,4,7])
-3×2 DataFrames.DataFrame
+3×2 DataFrame
  Row │ X      Y
      │ Int64  Int64
 ─────┼──────────────
@@ -60,20 +60,20 @@ Coefficients:
 ────────────
     Estimate
 ────────────
-x1  3.88915 
+x1  3.88915
 x2  0.222093
 ────────────
 
 julia> predict(m)
-3-element Array{Float64,1}:
- 4.111240223622052
+3-element Vector{Float64}:
+ 4.111240223622057
  4.333333333333333
- 4.555426443044614
+ 4.555426443044609
 
 julia> predict(m, data[2:end,:])
-2-element Array{Union{Missing, Float64},1}:
+2-element Vector{Union{Missing, Float64}}:
  4.333333333333333
- 4.555426443044614
+ 4.555426443044609
 ```
 
 In the variant above, it automatically picks the size of penalty to apply to ``x_2``.
