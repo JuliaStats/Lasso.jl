@@ -1,4 +1,4 @@
-using MLBase, Random
+using MLBase, Random, StableRNGs
 
 @testset "cross validation" begin
 
@@ -27,25 +27,23 @@ segminAIC = Lasso.minAIC(path)
 @test segminAIC == 72
 @test coefsAIC == β[:,segminAIC]
 
-Random.seed!(13)
-gen = Kfold(length(y),10)
+gen = Kfold(StableRNG(13), length(y), 10)
 segCVmin = cross_validate_path(path, MinCVmse(gen))
-coefsCVmin = coef(path, MinCVmse(path))
+coefsCVmin = coef(path, MinCVmse(Kfold(StableRNG(13), length(y), 10)))
 @test segCVmin == 72
 @test coefsCVmin == β[:,segCVmin]
 
-Random.seed!(13)
-gen = Kfold(length(y),10)
-segCVmin = cross_validate_path(path,X,y, MinCVmse(gen), offset=offset)
-coefsCVmin = coef(path, MinCVmse(path))
+gen = Kfold(StableRNG(13), length(y), 10)
+segCVmin = cross_validate_path(path, X, y, MinCVmse(gen), offset=offset)
+coefsCVmin = coef(path, MinCVmse(Kfold(StableRNG(13), length(y), 10)))
 @test segCVmin == 72
 @test coefsCVmin == β[:,segCVmin]
 
-Random.seed!(13)
-coefsCV1se = coef(path, MinCV1se(path, 20))
-Random.seed!( 13)
-segCV1se = cross_validate_path(path,X,y, MinCV1se(path, 20),offset=offset)
-@test segCV1se == 42
+gen1 = Kfold(StableRNG(13), length(y), 20)
+coefsCV1se = coef(path, MinCV1se(gen1))
+gen2 = Kfold(StableRNG(13), length(y), 20)
+segCV1se = cross_validate_path(path, X, y, MinCV1se(gen2), offset=offset)
+@test segCV1se == 41
 @test coefsCV1se == β[:,segCV1se]
 
 end
