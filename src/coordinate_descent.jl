@@ -704,12 +704,15 @@ function StatsBase.fit!(path::RegularizationPath{S,T}; verbose::Bool=false, irls
                 niter += cdfit!(newcoef, update!(cd, newcoef, scratchmu, wrkwt), curλ, criterion)
                 b0 = intercept(newcoef, cd)
 
-                # Update GLM and get deviance
-                updateμ!(r, linpred!(scratchmu, cd, newcoef, b0))
-
-                # Compute Elastic Net objective
+                # Update GLM and get deviance; catch DomainError (e.g. log(0.0) in
+                # Julia 1.13+ when exp(η) overflows) and set dev=Inf to trigger step-halving
                 objold = obj
-                dev = deviance(r)
+                try
+                    updateμ!(r, linpred!(scratchmu, cd, newcoef, b0))
+                    dev = deviance(r)
+                catch e
+                    isa(e, DomainError) ? (dev = typemax(T)) : rethrow(e)
+                end
                 obj = dev/2 + curλ*P(α, newcoef, ω)
 
                 if obj > objold + length(scratchmu)*eps(objold)
@@ -729,8 +732,12 @@ function StatsBase.fit!(path::RegularizationPath{S,T}; verbose::Bool=false, irls
                             newcoef.coef[icoef] = oldcoefval+f*(coefdiff.coef[icoef])
                         end
                         b0 = oldb0+f*b0diff
-                        updateμ!(r, linpred!(scratchmu, cd, newcoef, b0))
-                        dev = deviance(r)
+                        try
+                            updateμ!(r, linpred!(scratchmu, cd, newcoef, b0))
+                            dev = deviance(r)
+                        catch e
+                            isa(e, DomainError) ? (dev = typemax(T)) : rethrow(e)
+                        end
                         obj = dev/2 + curλ*P(α, newcoef, ω)
                     end
                 end
