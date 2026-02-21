@@ -337,7 +337,7 @@ function build_model(X::AbstractMatrix{T}, y::FPVector, d::UnivariateDistributio
 
     # Maybe we should reuse this GlmResp object?
     nullmodel = fit(GeneralizedLinearModel, X0, y, d, l; dropcollinear=dropcollinear,
-                    wts=wts, offset=offset, rtol=irls_tol, dofit=dofit)
+                    weights=StatsBase.FrequencyWeights(wts), offset=offset, rtol=irls_tol, dofit=dofit)
     nulldev = deviance(nullmodel)
     nullb0 = intercept ? coef(nullmodel)[1] : zero(T)
 

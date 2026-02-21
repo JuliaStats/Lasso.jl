@@ -73,8 +73,8 @@ Random.seed!(testrng, 6540)
                 gcoefs_CVmin = vec(readcsvmat(joinpath(datapath,"gamlr.$family.$fitname.coefs.CVmin.csv")))
                 gcoefs_CV1se = vec(readcsvmat(joinpath(datapath,"gamlr.$family.$fitname.coefs.CV1se.csv")))
 
-                glp_CVmin = coef(glp,MinCVmse(glp, 10))
-                glp_CV1se = coef(glp,MinCV1se(glp, 10))
+                glp_CVmin = coef(glp,MinCVmse(glp, 10; rng=StableRNG(1337)))
+                glp_CV1se = coef(glp,MinCV1se(glp, 10; rng=StableRNG(1337)))
 
                 # these tests can randomly fail because MLBase relies on the global rng which is unstable
                 # increasing rtol from 0.3 to 0.35 until that is resolved
