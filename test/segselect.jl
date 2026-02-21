@@ -6,7 +6,7 @@ using GLM: predict
 macro test_show(expr, expected)
     s = quote
         local o = IOBuffer()
-        show(o, $expr)
+        show(o, MIME("text/plain"), $expr)
         String(take!(o))
     end
     substr = quote $expected end

@@ -325,7 +325,7 @@ function coeftable(mm::RegularizedModel)
                 ["x$i" for i = 1:size(mm.lpm.pp.X, 2)])
 end
     
-function Base.show(io::IO, obj::RegularizedModel)
+function Base.show(io::IO, ::MIME"text/plain", obj::RegularizedModel)
     # prefix = isa(obj.m, GeneralizedLinearModel) ? string(typeof(distfun(path)).name.name, " ") : ""
     println(io, "$(typeof(obj).name.name) using $(obj.select) segment of the regularization path.")
     println(io, "\nCoefficients:")
@@ -334,7 +334,7 @@ function Base.show(io::IO, obj::RegularizedModel)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", obj::StatsModels.TableRegressionModel{<:RegularizedModel})
-    show(io, obj.model)
+    show(io, MIME("text/plain"), obj.model)
 end
 
 StatsBase.vcov(obj::RegularizedModel, args...) = error("variance-covariance matrix for a regularized model is not yet implemented")
