@@ -328,8 +328,13 @@ end
 function Base.show(io::IO, obj::RegularizedModel)
     # prefix = isa(obj.m, GeneralizedLinearModel) ? string(typeof(distfun(path)).name.name, " ") : ""
     println(io, "$(typeof(obj).name.name) using $(obj.select) segment of the regularization path.")
+    println(io, "\nCoefficients:")
+    show(io, MIME("text/plain"), coeftable(obj))
+    println(io)
+end
 
-    println(io, "\nCoefficients:\n", coeftable(obj))
+function Base.show(io::IO, ::MIME"text/plain", obj::StatsModels.TableRegressionModel{<:RegularizedModel})
+    show(io, obj.model)
 end
 
 StatsBase.vcov(obj::RegularizedModel, args...) = error("variance-covariance matrix for a regularized model is not yet implemented")

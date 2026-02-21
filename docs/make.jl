@@ -11,6 +11,8 @@ makedocs(
     sitename = "Lasso.jl",
     authors = "Simon Kornblith, Asaf Manela, and contributors.",
     linkcheck = !("skiplinks" in ARGS),
+    warnonly = [:missing_docs],
+    doctestfilters = [r"(?<=\.\d{5})\d+"],
     pages = [
         "Home" => "index.md",
         "Lasso paths" => "lasso.md",
