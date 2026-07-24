@@ -15,7 +15,7 @@ using JSON
                     write_json(path, m)
                     m2 = read_json(path)
 
-                    @test m2 isa Lasso.JSONModel
+                    @test m2 isa Lasso.InferenceModel
                     @test predict(m, X) ≈ predict(m2, X)
                 end
             end
@@ -25,7 +25,15 @@ using JSON
                 write_json(io, m)
                 m2 = read_json(IOBuffer(take!(io)))
 
-                @test m2 isa Lasso.JSONModel
+                @test m2 isa Lasso.InferenceModel
+                @test predict(m, X) ≈ predict(m2, X)
+            end
+
+            @testset "to_dict (JSON-independent)" begin
+                d = Lasso.to_dict(m)
+                m2 = Lasso.InferenceModel(d)
+
+                @test m2 isa Lasso.InferenceModel
                 @test predict(m, X) ≈ predict(m2, X)
             end
         end
