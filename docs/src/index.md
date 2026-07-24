@@ -114,7 +114,6 @@ tend to result in sparser coefficient estimates.
 
 ## TODO
 
- - User-specified weights are untested
  - Maybe integrate LARS.jl
 
 ## See also

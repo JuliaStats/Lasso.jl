@@ -78,8 +78,11 @@ More documentation is available at [![][docs-stable-img]][docs-stable-url].
 
 ## TODO
 
- - User-specified weights are untested
  - Maybe integrate LARS.jl
+
+## Changelog
+
+- v0.7.6 fixes a bug where user-specified weights were not used during standardization
 
 ## See also
 

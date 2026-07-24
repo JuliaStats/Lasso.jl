@@ -157,6 +157,66 @@ end
     end
 end
 
+# Test against GLMNet with user-specified observation weights
+@testset "weights" begin
+    @testset "$(typeof(dist).name.name) $(typeof(link).name.name)" for (dist, link) in ((Normal(), IdentityLink()), (Binomial(), LogitLink()), (Poisson(), LogLink()))
+        Random.seed!(testrng, 3921)
+        (X, y) = genrand(Float64, dist, link, 1000, 10, false)
+        wts = rand(testrng, 10:1000, length(y)) ./ 100 # random positive weights, not summing to n
+
+        @testset "$(intercept ? "w/" : "w/o") intercept" for intercept = (false, true)
+            let y = y
+                if isa(dist, Normal)
+                    wymean = sum(wts .* y) / sum(wts)
+                    ypstd = sqrt(sum(wts .* abs2.(y .- wymean)) / sum(wts))
+                    yp = y ./ ypstd
+                    y = yp
+                    g = glmnet(X, yp, dist, intercept=intercept, tol=10*eps(); weights=wts)
+                elseif isa(dist, Binomial)
+                    yp = zeros(size(y, 1), 2)
+                    yp[:, 1] = y .== 0
+                    yp[:, 2] = y .== 1
+                    g = glmnet(X, yp, dist, intercept=intercept, tol=10*eps(); weights=wts)
+                else
+                    g = glmnet(X, y, dist, intercept=intercept, tol=10*eps(); weights=wts)
+                end
+                gbeta = convert(Matrix{Float64}, g.betas)
+
+                l = fit(LassoPath, X, y, dist, link, λ=g.lambda, intercept=intercept,
+                        cd_tol=10*eps(), irls_tol=10*eps(), wts=wts)
+
+                @test l.coefs ≈ gbeta rtol=1e-5
+                @test l.b0 ≈ g.a0 rtol=1e-5
+            end
+        end
+
+        # a constant rescaling of the weights should not change the fit, since
+        # wts is internally rescaled to sum to 1 (src/Lasso.jl)
+        @testset "scale invariance" begin
+            l1 = fit(LassoPath, X, y, dist, link, wts=wts, rng=StableRNG(1337))
+            l2 = fit(LassoPath, X, y, dist, link, wts=3.5 .* wts, rng=StableRNG(1337))
+            @test l1.coefs ≈ l2.coefs
+            @test l1.b0 ≈ l2.b0
+        end
+    end
+
+    # zero-weight observations should be equivalent to excluding them entirely
+    @testset "zero weights exclude observations" begin
+        Random.seed!(testrng, 3921)
+        (X, y) = genrand(Float64, Normal(), IdentityLink(), 200, 10, false)
+        keep = rand(testrng, Bool, length(y))
+        wts = Float64.(keep)
+
+        l_zeroed = fit(LassoPath, X, y, Normal(), IdentityLink(), wts=wts, rng=StableRNG(1337),
+                       cd_tol=1e-12, irls_tol=1e-12)
+        l_subset = fit(LassoPath, X[keep, :], y[keep], Normal(), IdentityLink(),
+                        λ=l_zeroed.λ, rng=StableRNG(1337), cd_tol=1e-12, irls_tol=1e-12)
+
+        @test l_zeroed.coefs ≈ l_subset.coefs rtol=1e-4
+        @test l_zeroed.b0 ≈ l_subset.b0 rtol=1e-4
+    end
+end
+
 # Test for sparse matrices
 
 # @testset "LassoPath Zero in" begin
