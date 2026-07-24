@@ -1,5 +1,3 @@
-## SERIALIZATION-INDEPENDENT SUPPORT FOR SAVING/LOADING A FITTED MODEL
-
 """
 InferenceModel stores the minimal state of a fitted `RegularizedModel` needed to
 call `predict`: coefficients, whether an intercept was fit, the link function,
@@ -20,9 +18,11 @@ end
 _get_link(lpm::LinearModel) = IdentityLink()
 _get_link(lpm::GeneralizedLinearModel) = Link(lpm)
 
-# explicit type <-> name tables, rather than nameof/eval, so the serialized
-# format is stable across GLM renames and InferenceModel(d) can only ever
-# construct one of these known link types
+# explicit type <-> name tables
+# This deliberately does not use metaprogramming or `nameof` or similar,
+# because if the julia type `IdentityLink` is renamed to e.g. `IdentityLink2`,
+# we want to continue to read/write it as the string
+# "IdentityLink" for stability in the serialized format.
 const LINK_TYPE_TO_NAME = Dict(
     IdentityLink          => "IdentityLink",
     LogitLink             => "LogitLink",
