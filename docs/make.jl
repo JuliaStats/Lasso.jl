@@ -17,6 +17,7 @@ makedocs(
         "Home" => "index.md",
         "Lasso paths" => "lasso.md",
         "Fused Lasso and trend filtering" => "smoothing.md",
+        "Saving and loading a fitted model" => "serialization.md",
         "Index" => "api.md",
     ],
     )

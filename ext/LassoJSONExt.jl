@@ -1,14 +1,14 @@
 module LassoJSONExt
 
 using Lasso
-using Lasso: RegularizedModel, InferenceModel, to_dict
+using Lasso: InferenceModel, to_dict
 using JSON
 
-function Lasso.write_json(io::IO, m::RegularizedModel)
+function Lasso.write_json(io::IO, m)
     return JSON.print(io, to_dict(m))
 end
 
-function Lasso.write_json(path::AbstractString, m::RegularizedModel)
+function Lasso.write_json(path::AbstractString, m)
     open(path, "w") do io
         Lasso.write_json(io, m)
     end
