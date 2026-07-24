@@ -75,7 +75,7 @@ function StatsBase.fit(::Type{GammaLassoPath},
     n = length(y)
     length(wts) == n || error("length(wts) = $(length(wts)) should be 0 or $n")
 
-    X, Xnorm = standardizeX(X, standardize)
+    X, Xnorm = standardizeX(X, standardize, wts)
 
     # Gamma lasso adaptation
     # Can potentially pass a different γ for each element of X, but if scalar we copy it to all params

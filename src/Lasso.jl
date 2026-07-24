@@ -357,10 +357,10 @@ initpenaltyfactor(penalty_factor::Nothing,p::Int,::Bool) = nothing
 initpenaltyfactor(penalty_factor::Vector,p::Int,standardizeω::Bool) =
     standardizeω ? rescale(penalty_factor, p) : penalty_factor
 
-# Standardize predictors if requested
-function standardizeX(X::AbstractMatrix{T}, standardize::Bool) where T
+# Standardize predictors if requested, accounting for observation weights `wts`
+function standardizeX(X::AbstractMatrix{T}, standardize::Bool, wts::AbstractVector=ones(T, size(X, 1))) where T
     if standardize
-        Xnorm = vec(convert(Matrix{T},std(X; dims=1, corrected=false)))
+        Xnorm = vec(convert(Matrix{T}, std(X, StatsBase.weights(wts), 1; corrected=false)))
         if any(x -> x == zero(T), Xnorm)
             @warn("""One of the predicators (columns of X) is a constant, so it can not be standardized.
                   To include a constant predicator set standardize = false and intercept = false""")
@@ -483,7 +483,7 @@ function StatsBase.fit(::Type{LassoPath},
     n = length(y)
     length(wts) == n || error("length(wts) = $(length(wts)) should be 0 or $n")
 
-    X, Xnorm = standardizeX(X, standardize)
+    X, Xnorm = standardizeX(X, standardize, wts)
 
     # Lasso initialization
     α = convert(T, α)
