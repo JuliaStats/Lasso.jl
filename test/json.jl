@@ -196,4 +196,30 @@ end
             @test predict(m, data) ≈ predict(m3, newX)
         end
     end
+
+    @testset "serialization stability" begin
+        # This Dict/JSON is a hand-written, frozen stand-in for a model
+        # serialized by an older version of Lasso.jl (it is not produced by
+        # fitting a model here). This test should NOT fail in a non-breaking
+        # release: its purpose is to make sure models serialized by older
+        # versions of the package can still be deserialized and used for
+        # inference. If this test fails, check whether the change is an
+        # intentional, documented breaking change to the serialization format.
+        d = Dict(
+            "coef" => [1.0, 2.0, -1.0],
+            "intercept" => true,
+            "link" => "IdentityLink",
+            "hasoffset" => false,
+        )
+        json_str = """{"coef":[1.0,2.0,-1.0],"intercept":true,"link":"IdentityLink","hasoffset":false}"""
+
+        X = [1.0 2.0; 3.0 -1.0; 0.0 0.0]
+        expected = [1.0, 8.0, 1.0]
+
+        m_dict = Lasso.InferenceModel(d)
+        @test predict(m_dict, X) ≈ expected
+
+        m_json = read_json(IOBuffer(json_str))
+        @test predict(m_json, X) ≈ expected
+    end
 end
