@@ -13,5 +13,6 @@ include("fusedlasso.jl")
 include("trendfiltering.jl")
 include("cross_validation.jl")
 include("segselect.jl")
+include("json.jl")
 
 end

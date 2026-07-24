@@ -76,6 +76,23 @@ tend to result in sparser coefficient estimates.
 
 More documentation is available at [![][docs-stable-img]][docs-stable-url].
 
+## Saving and loading a fitted model
+
+Loading `JSON.jl` alongside Lasso.jl enables
+`write_json`/`read_json`, which save just the coefficients, intercept, and
+link of a fitted `LassoModel`/`GammaLassoModel` — enough to reproduce
+`predict` without keeping the full fit (and its underlying data) around:
+
+```julia
+using Lasso, JSON
+
+m = fit(LassoModel, X, y, dist, link; select=MinAICc())
+write_json("model.json", m)
+
+m2 = read_json("model.json")
+predict(m2, newX) ≈ predict(m, newX)
+```
+
 ## TODO
 
  - User-specified weights are untested

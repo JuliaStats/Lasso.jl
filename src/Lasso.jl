@@ -21,7 +21,8 @@ export RegularizationPath, LassoPath, GammaLassoPath, NaiveCoordinateDescent,
        minAICc, hasintercept, dof, aicc, distfun, linkfun, cross_validate_path,
        SegSelect, segselect, selectmodel,
        AllSeg, MinAIC, MinAICc, MinBIC, CVSegSelect, MinCVmse, MinCV1se,
-       RegularizedModel, LassoModel, GammaLassoModel
+       RegularizedModel, LassoModel, GammaLassoModel,
+       JSONModel, write_json, read_json
 
 
 ## HELPERS FOR SPARSE COEFFICIENTS
@@ -693,6 +694,7 @@ end
 include("coordinate_descent.jl")
 include("gammalasso.jl")
 include("segselect.jl")
+include("json_model.jl")
 include("cross_validation.jl")
 include("deprecated.jl")
 
