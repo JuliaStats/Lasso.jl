@@ -90,6 +90,20 @@ Random.seed!(testrng, 6540)
                     @test glp.λ == lp.λ
                     @test glp.b0 ≈ lp.b0
                     @test glp.coefs ≈ lp.coefs
+
+                    # Compare with LassoPath with weights and standardize=true (the
+                    # default), to exercise the same weighted standardizeX code path
+                    # that GammaLassoPath and LassoPath share
+                    Random.seed!(testrng, 5847)
+                    wts = rand(testrng, 10:1000, length(y)) ./ 100
+                    glp_wtd = fit(GammaLassoPath, X, y, dist, link; γ=γ, stopearly=false,
+                        λminratio=0.001, penalty_factor=penalty_factor, wts=wts,
+                        rng=StableRNG(1337))
+                    lp_wtd = fit(LassoPath, X, y, dist, link; stopearly=false,
+                        λminratio=0.001, penalty_factor=penalty_factor, λ=glp_wtd.λ,
+                        wts=wts, rng=StableRNG(1337))
+                    @test glp_wtd.b0 ≈ lp_wtd.b0
+                    @test glp_wtd.coefs ≈ lp_wtd.coefs
                 end
             end
         end
