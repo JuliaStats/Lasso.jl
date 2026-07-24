@@ -5,7 +5,7 @@ using Lasso: InferenceModel, to_dict
 using JSON
 
 function Lasso.write_json(io::IO, m)
-    return JSON.print(io, to_dict(m))
+    return JSON.print(io, to_dict(InferenceModel(m)))
 end
 
 function Lasso.write_json(path::AbstractString, m)

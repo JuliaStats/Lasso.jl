@@ -7,13 +7,13 @@ randdist(::InverseGaussian, x) = rand(testrng, InverseGaussian(x, 1.0))
 randdist(::NegativeBinomial, x) = rand(testrng, NegativeBinomial(10.0, 10.0 / (10.0 + x)))
 
 """
-Check that `m`'s prediction matches after roundtripping through `to_dict`
-(JSON-independent) and through `write_json`/`read_json` (JSON-based).
+Check that `m`'s prediction matches after roundtripping through `InferenceModel`/
+`to_dict` (JSON-independent) and through `write_json`/`read_json` (JSON-based).
 """
 function test_json_roundtrip(m, X; offset::AbstractVector{<:Real}=Float64[])
     expected = isempty(offset) ? predict(m, X) : predict(m, X; offset=offset)
 
-    d = Lasso.to_dict(m)
+    d = Lasso.to_dict(Lasso.InferenceModel(m))
     m_dict = Lasso.InferenceModel(d)
     actual_dict = isempty(offset) ? predict(m_dict, X) : predict(m_dict, X; offset=offset)
     @test actual_dict ≈ expected
@@ -56,8 +56,15 @@ end
                 @test predict(m, X) ≈ predict(m2, X)
             end
 
-            @testset "to_dict (JSON-independent)" begin
-                d = Lasso.to_dict(m)
+            @testset "InferenceModel construction" begin
+                m2 = Lasso.InferenceModel(m)
+                @test m2 isa Lasso.InferenceModel
+                @test predict(m, X) ≈ predict(m2, X)
+                @test Lasso.InferenceModel(m2) === m2
+            end
+
+            @testset "to_dict roundtrip (JSON-independent)" begin
+                d = Lasso.to_dict(Lasso.InferenceModel(m))
                 m2 = Lasso.InferenceModel(d)
 
                 @test m2 isa Lasso.InferenceModel
@@ -156,7 +163,7 @@ end
         @test_throws ArgumentError predict(m2, X; offset=offset[1:end-1])
 
         m0 = fit(LassoModel, X, y, Poisson(), LogLink(); select=MinAICc())
-        d0 = Lasso.to_dict(m0)
+        d0 = Lasso.to_dict(Lasso.InferenceModel(m0))
         @test !d0["hasoffset"]
         m0_2 = Lasso.InferenceModel(d0)
         @test_throws ArgumentError predict(m0_2, X; offset=offset)
@@ -166,16 +173,16 @@ end
         Random.seed!(testrng, 371)
         (X, y) = genrand(Float64, Normal(), IdentityLink(), 50, 3, false)
         path = fit(LassoPath, X, y)
-        @test_throws ArgumentError Lasso.to_dict(path)
+        @test_throws ArgumentError Lasso.InferenceModel(path)
 
         gpath = fit(GammaLassoPath, X, y)
-        @test_throws ArgumentError Lasso.to_dict(gpath)
+        @test_throws ArgumentError Lasso.InferenceModel(gpath)
 
         fl = fit(FusedLasso, y, 1.0)
-        @test_throws ArgumentError Lasso.to_dict(fl)
+        @test_throws ArgumentError Lasso.InferenceModel(fl)
 
         tf = fit(TrendFilter, y, 1, 1.0)
-        @test_throws ArgumentError Lasso.to_dict(tf)
+        @test_throws ArgumentError Lasso.InferenceModel(tf)
     end
 
     @testset "TableRegressionModel wrapper" begin
@@ -185,9 +192,12 @@ end
         m = fit(LassoModel, @formula(Y ~ X1 + X2), data; select=MinAICc())
         newX = Matrix(data[:, [:X1, :X2]])
 
-        d = Lasso.to_dict(m)
-        m2 = Lasso.InferenceModel(d)
+        m2 = Lasso.InferenceModel(m)
         @test predict(m, data) ≈ predict(m2, newX)
+
+        d = Lasso.to_dict(m2)
+        m2_from_dict = Lasso.InferenceModel(d)
+        @test predict(m, data) ≈ predict(m2_from_dict, newX)
 
         mktempdir() do dir
             path = joinpath(dir, "model.json")
